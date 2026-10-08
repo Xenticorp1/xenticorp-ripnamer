@@ -40,11 +40,11 @@ jobs:
           --version-file version_info.txt ripnamer.py
       - name: Rename asset
         shell: bash
-        run: mv "dist/Xenticorp Ripnamer.exe" dist/Xenticorp-Ripnamer-Windows.exe
+        run: mv "dist/Xenticorp Ripnamer.exe" dist/Xenticorp-Ripnamer.exe
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/Xenticorp-Ripnamer-Windows.exe
+          path: dist/Xenticorp-Ripnamer.exe
           if-no-files-found: error
 
   linux:
@@ -89,7 +89,7 @@ jobs:
         working-directory: assets
         run: |
           chmod +x xenticorp-ripnamer-linux-x86_64
-          sha256sum Xenticorp-Ripnamer-Windows.exe xenticorp-ripnamer-linux-x86_64 > SHA256SUMS.txt
+          sha256sum Xenticorp-Ripnamer.exe xenticorp-ripnamer-linux-x86_64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Asset names are fixed: Xenticorp.net links to /releases/latest/download/<name>.
       - uses: softprops/action-gh-release@v2
@@ -97,7 +97,7 @@ jobs:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: |
-            assets/Xenticorp-Ripnamer-Windows.exe
+            assets/Xenticorp-Ripnamer.exe
             assets/xenticorp-ripnamer-linux-x86_64
             assets/SHA256SUMS.txt
           fail_on_unmatched_files: true

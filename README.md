@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.0)
+# Xenticorp Ripnamer  (v3.0.1)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -9,7 +9,7 @@ Prebuilt apps are on the [Releases page](../../releases/latest):
 
 | Platform | File |
 |---|---|
-| Windows | [`Xenticorp-Ripnamer-Windows.exe`](../../releases/latest/download/Xenticorp-Ripnamer-Windows.exe) |
+| Windows | [`Xenticorp-Ripnamer.exe`](../../releases/latest/download/Xenticorp-Ripnamer.exe) |
 | Linux (x86_64, Ubuntu 22.04+) | [`xenticorp-ripnamer-linux-x86_64`](../../releases/latest/download/xenticorp-ripnamer-linux-x86_64) |
 | Checksums | [`SHA256SUMS.txt`](../../releases/latest/download/SHA256SUMS.txt) |
 
@@ -19,7 +19,7 @@ Prebuilt apps are on the [Releases page](../../releases/latest):
 - **Linux:** `chmod +x xenticorp-ripnamer-linux-x86_64 && ./xenticorp-ripnamer-linux-x86_64`
 
 **Verify the download** (optional): compare against `SHA256SUMS.txt`.
-- Windows (PowerShell): `Get-FileHash .\Xenticorp-Ripnamer-Windows.exe -Algorithm SHA256`
+- Windows (PowerShell): `Get-FileHash .\Xenticorp-Ripnamer.exe -Algorithm SHA256`
 - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 
 ## Files
