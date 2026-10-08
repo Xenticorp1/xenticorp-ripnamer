@@ -1,0 +1,12 @@
+# Never commit a baked-in TMDb key
+ripnamer_key.py
+
+# Build output
+dist/
+build/
+*.spec
+.venv/
+__pycache__/
+
+# Leftover from an interrupted cross-drive move
+*.ripnamer-part
