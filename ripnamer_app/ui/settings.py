@@ -1,9 +1,10 @@
-"""⚙ Settings dialog: TMDb key, theme, interface size, detection threshold."""
+"""⚙ Settings dialog: TMDb key, theme, interface size, detection threshold, about."""
 
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox, ttk
 
-from .. import APP
+from .. import APP, VERSION
 from ..config import BAKED_KEY
 
 
@@ -89,6 +90,18 @@ class SettingsDialog:
         self.minutes = tk.StringVar(value=app.min_var.get())
         ttk.Spinbox(mr, from_=0, to=120, width=5, textvariable=self.minutes).pack(side="left", padx=6)
         ttk.Label(mr, text="min  (treats them as extras)").pack(side="left")
+        row += 1
+
+        # --- about
+        section("About")
+        ttk.Label(body, text=f"Xenticorp Ripnamer v{VERSION}").grid(row=row, column=0, sticky="w")
+        row += 1
+        ttk.Label(body, text="This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                  style="Muted.TLabel").grid(row=row, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        row += 1
+        link = ttk.Label(body, text="themoviedb.org", style="Link.TLabel", cursor="hand2")
+        link.grid(row=row, column=0, sticky="w", pady=(2, 0))
+        link.bind("<Button-1>", lambda e: webbrowser.open("https://www.themoviedb.org/"))
         row += 1
 
         btns = ttk.Frame(body)

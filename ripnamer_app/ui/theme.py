@@ -103,6 +103,7 @@ class Theme:
         style.configure("Show.TLabel", font=("Segoe UI", 12, "bold"), foreground=P["accent"])
         style.configure("Brand.TLabel", font=self.brand_tiny, foreground=P["trace_hi"])
         style.configure("Count.TLabel", font=("Segoe UI", 10, "bold"))
+        style.configure("Link.TLabel", foreground=P["accent"], font=("Segoe UI", 9, "underline"))
         for key in ("skip", "bad", "warn", "ok"):
             style.configure(f"{key}.Count.TLabel", foreground=P[key])
 

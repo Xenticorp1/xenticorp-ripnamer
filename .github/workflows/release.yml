@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Release builds never carry a TMDb key: users bring their own.
+      - name: Refuse a baked-in key
+        shell: bash
+        run: test ! -e ripnamer_key.py || { echo "ripnamer_key.py must not exist in CI"; exit 1; }
+      - name: Install build tools
+        run: python -m pip install --upgrade pyinstaller sv-ttk pillow
+      - name: Build (same flags as build.bat)
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          --name "Xenticorp Ripnamer" --collect-data sv_ttk
+          --icon xenticorp.ico --add-data "xenticorp.ico;."
+          --version-file version_info.txt ripnamer.py
+      - name: Rename asset
+        shell: bash
+        run: mv "dist/Xenticorp Ripnamer.exe" dist/Xenticorp-Ripnamer-Windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/Xenticorp-Ripnamer-Windows.exe
+          if-no-files-found: error
+
+  linux:
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tk
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Release builds never carry a TMDb key: users bring their own.
+      - name: Refuse a baked-in key
+        run: test ! -e ripnamer_key.py || { echo "ripnamer_key.py must not exist in CI"; exit 1; }
+      - name: Install build tools
+        run: python -m pip install --upgrade pyinstaller sv-ttk
+      - name: Build (same flags as build.sh)
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          --name xenticorp-ripnamer --collect-data sv_ttk
+          --add-data "xenticorp.png:." ripnamer.py
+      - name: Rename asset
+        run: mv dist/xenticorp-ripnamer dist/xenticorp-ripnamer-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/xenticorp-ripnamer-linux-x86_64
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: |
+          chmod +x xenticorp-ripnamer-linux-x86_64
+          sha256sum Xenticorp-Ripnamer-Windows.exe xenticorp-ripnamer-linux-x86_64 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Asset names are fixed: Xenticorp.net links to /releases/latest/download/<name>.
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            assets/Xenticorp-Ripnamer-Windows.exe
+            assets/xenticorp-ripnamer-linux-x86_64
+            assets/SHA256SUMS.txt
+          fail_on_unmatched_files: true
