@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.1.0)
+# Xenticorp Ripnamer  (v3.1.1)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
