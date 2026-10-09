@@ -1,4 +1,4 @@
-"""TMDb client: search, seasons, episode groups (alternate orderings).
+"""TMDb client: search, seasons, continuous timelines, episode groups (alternate orderings).
 
 Hardened for flaky networks: timeouts, 5xx and 429 (rate limit) are retried with backoff,
 honouring Retry-After. Errors come back as TMDbError with a message fit for the UI.
@@ -108,9 +108,47 @@ class TMDb:
         def fetch():
             data = self._get(f"/tv/{show_id}/season/{season}")
             return [{"number": e["episode_number"], "title": e.get("name") or f"Episode {e['episode_number']}",
-                     "runtime": e.get("runtime"), "season": season, "episode": e["episode_number"]}
+                     "runtime": e.get("runtime"), "season": season, "episode": e["episode_number"],
+                     "air_date": e.get("air_date") or None}
                     for e in data.get("episodes", [])]
         return self._cached(("season", show_id, season), fetch)
+
+    def show_details(self, show_id: int) -> list[int]:
+        """Season numbers TMDb has for the show, ascending. 0 = Specials."""
+        def fetch():
+            data = self._get(f"/tv/{show_id}")
+            return sorted({s["season_number"] for s in data.get("seasons", [])
+                           if s.get("season_number") is not None and s.get("episode_count", 1) > 0})
+        return self._cached(("show", show_id), fetch)
+
+    def timeline(self, show_id: int, include_specials: bool = True) -> list[dict]:
+        """Every regular episode in (season, episode) order, numbered 1..N straight through.
+        With include_specials, each dated special goes right after the last regular episode that
+        aired on or before it (undated specials are left out). season/episode stay the real ones."""
+        seasons = self.show_details(show_id)
+        regular = sorted((e for s in seasons if s > 0 for e in self.season(show_id, s)),
+                         key=lambda e: (e["season"], e["episode"]))
+        after = {}  # index of the regular episode a special follows (-1 = before all of them)
+        if include_specials and 0 in seasons:
+            for sp in sorted((e for e in self.season(show_id, 0) if e["air_date"]),
+                             key=lambda e: (e["air_date"], e["episode"])):
+                pos = max((i for i, e in enumerate(regular) if e["air_date"] and e["air_date"] <= sp["air_date"]),
+                          default=-1)
+                after.setdefault(pos, []).append(sp)
+        ordered = list(after.get(-1, []))
+        for i, e in enumerate(regular):
+            ordered.append(e)
+            ordered.extend(after.get(i, []))
+        return [dict(e, number=n) for n, e in enumerate(ordered, 1)]  # copies: season() results are cached
+
+    def with_all_specials(self, show_id: int, timeline: list[dict]) -> list[dict]:
+        """timeline + every special it left out (undated, or specials turned off), numbered after
+        its end and marked pick_only: plan() uses them only for a file set to one with "Set episode…"."""
+        if 0 not in self.show_details(show_id):
+            return list(timeline)
+        have = {(e["season"], e["episode"]) for e in timeline}
+        extra = [e for e in self.season(show_id, 0) if (0, e["episode"]) not in have]
+        return list(timeline) + [dict(e, number=len(timeline) + n, pick_only=True) for n, e in enumerate(extra, 1)]
 
     def episode_groups(self, show_id: int) -> list[dict]:
         """Alternate orderings (DVD volumes, absolute, story arcs…)."""
@@ -136,6 +174,11 @@ class TMDb:
                     for i, e in enumerate(eps)]})
             return out
         return self._cached(("group", group_id), fetch)
+
+
+def position(episodes: list[dict], season: int, episode: int):
+    """'number' of SxxEyy in an episode list, or None if it isn't there."""
+    return next((e["number"] for e in episodes if (e["season"], e["episode"]) == (season, episode)), None)
 
 
 def scheme_numbers(names: list[str]) -> list[int]:

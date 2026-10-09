@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.0.1)
+# Xenticorp Ripnamer  (v3.1.0)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -64,7 +64,7 @@ Settings on Linux live in `~/.config/RipNamer/config.json`. If Auto interface si
 ## Use
 1. **Rip folder** → Browse to one disc's rips. Shows how many .mkv / .mp4 files it found.
 2. **Show** → type name, Enter, highlight the right result (description shown below), click **Select this show**. It stays locked until you hit **Change**.
-3. **Episodes** → pick **Numbering** (see below), then season/volume + first episode on this disc (disc 2 might start at E07). Optional: tick **Move into Jellyfin library** and pick your TV root; unticked = rename in place.
+3. **Episodes** → pick **Numbering** (see below), then season/volume + first episode on this disc (disc 2 might start at E07). For a disc that crosses into the next season, pick **Continuous (across seasons)**. Optional: tick **Move into Jellyfin library** and pick your TV root; unticked = rename in place.
 4. **Preview** → check the table → **Rename N files**.
 
 Changing any setting after a preview disables Rename until you Preview again.
@@ -78,6 +78,28 @@ With a scheme picked:
 - **Name files with**
   - **Standard SxxExx (recommended)** – files get each episode's normal aired number. Jellyfin matches them with zero setup, even when a volume spans two seasons.
   - **This scheme's numbering** – `S03E01…` = Volume 3, episode 1. Only use this if you also set the series' **Display order** in Jellyfin to the matching ordering, or episodes will mismatch.
+
+## Discs that span seasons / specials
+Some discs cross a season break and carry a special in between. Example, a Doctor Who (2005) disc:
+
+| File | Episode |
+|---|---|
+| `title_t00.mkv` | S01E12 · Bad Wolf |
+| `title_t01.mkv` | S01E13 · The Parting of the Ways |
+| `title_t02.mkv` | S00E02 · The Christmas Invasion (special, aired 2005-12-25) |
+| `title_t03.mkv` | S02E01 · New Earth |
+| `title_t04.mkv` | S02E02 · Tooth and Claw |
+
+Pick **Numbering → Continuous (across seasons)**, set **Start at** season 1, episode 12, and Preview. The app lines up the whole show in one run: every season in order, with each special placed right after the last episode that aired on or before it. **Include specials in air-date order** (on by default) controls that. Untick it for discs without specials.
+
+- Specials are named `S00Exx` and, with **Move into Jellyfin library**, go into `Season 00`, which is where Jellyfin looks for them.
+- Specials without an air date on TMDb have no place in the order, so they're left out. You can still assign one with **Set episode…** (below).
+- If the start season/episode doesn't exist on TMDb, Preview says so instead of guessing.
+
+### Set episode…
+Works in every numbering mode. Right-click a row → **Set episode…** opens a searchable list of the episodes in the current mode (in Continuous mode: the whole show, including all specials), shown like `S01E13 · The Parting of the Ways · 45m`. Type to filter (`S02`, `christmas`…), then pick one.
+
+That file gets the episode you picked, and the files after it keep counting from there. Handy when a disc skips an episode or has one out of order. Rows you set show **OK (set)** (or the usual ⚠ runtime warning). Right-click → **Clear set episode** undoes it. Changing the folder, the show or the numbering clears all of them.
 
 ## Renaming & moving
 - **Same drive:** instant rename.
@@ -93,7 +115,7 @@ With a scheme picked:
 - **Orange ⚠** – runtime doesn't match TMDb. Usually the order is off or an extra slipped in.
 - **Red ✖** – more files than episodes in that season/volume, or the target file already exists. Won't be renamed.
 
-Double-click or right-click a row to include/skip it; episodes renumber automatically.
+Double-click a row (or right-click → Skip / Include) to include or skip it; episodes renumber automatically. Right-click → **Set episode…** pins a file to a specific episode.
 Files are processed in natural filename order (t00, t01 … t10), which is MakeMKV's title order.
 
 ## Settings (⚙)
@@ -126,10 +148,10 @@ TMDb lookups retry automatically (up to 4 tries with growing waits) on timeouts,
 - **Left panel cut off** – it scrolls (mouse wheel) when the window is short.
 
 ## Tests
-From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `py -m …`). Covers MKV/MP4 length reading, planning, TMDb retries, cross-drive copy, cancel, and undo. No internet or real videos needed.
+From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `py -m …`). Covers MKV/MP4 length reading, planning, continuous timelines with specials, Set episode, TMDb retries, cross-drive copy, cancel, and undo. No internet or real videos needed.
 
 ## Known limits
-- Alternate orderings only exist if someone added them on TMDb. If yours is missing, use Standard seasons + First episode.
+- Alternate orderings only exist if someone added them on TMDb. If yours is missing, use Standard seasons + First episode, or Continuous for discs that cross seasons.
 - One file = one episode (no multi-episode files).
 - Video types: .mkv, .mp4, .m4v. Each file keeps its own extension when renamed.
 - Only the icon uses `xenticorp.ico`; the header logo is drawn in code.
