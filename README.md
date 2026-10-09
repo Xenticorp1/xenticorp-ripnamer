@@ -9,17 +9,17 @@ Prebuilt apps are on the [Releases page](../../releases/latest):
 
 | Platform | File |
 |---|---|
-| Windows | [`Xenticorp-Ripnamer.exe`](../../releases/latest/download/Xenticorp-Ripnamer.exe) |
-| Linux (x86_64, Ubuntu 22.04+) | [`xenticorp-ripnamer-linux-x86_64`](../../releases/latest/download/xenticorp-ripnamer-linux-x86_64) |
+| Windows | `Xenticorp-Ripnamer-<version>.exe` on the [latest release](../../releases/latest) |
+| Linux (x86_64, Ubuntu 22.04+) | `xenticorp-ripnamer-<version>-linux-x86_64` on the [latest release](../../releases/latest) |
 | Checksums | [`SHA256SUMS.txt`](../../releases/latest/download/SHA256SUMS.txt) |
 
 **Bring your own free TMDb key.** Release builds have no key built in: on first launch open ⚙ Settings and paste yours. Free TMDb key: themoviedb.org → Settings → API. The v3 "API Key" or v4 "Read Access Token" both work.
 
 - **Windows:** the exe is unsigned, so SmartScreen may warn the first time → "More info → Run anyway".
-- **Linux:** `chmod +x xenticorp-ripnamer-linux-x86_64 && ./xenticorp-ripnamer-linux-x86_64`
+- **Linux:** `chmod +x xenticorp-ripnamer-*-linux-x86_64 && ./xenticorp-ripnamer-*-linux-x86_64`
 
 **Verify the download** (optional): compare against `SHA256SUMS.txt`.
-- Windows (PowerShell): `Get-FileHash .\Xenticorp-Ripnamer.exe -Algorithm SHA256`
+- Windows (PowerShell): `Get-FileHash .\Xenticorp-Ripnamer-*.exe -Algorithm SHA256`
 - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 
 ## Files
@@ -50,12 +50,12 @@ Heads-up: unsigned PyInstaller exes can trip SmartScreen/Defender the first time
 
 ## Linux (Ubuntu)
 The `.exe` is Windows-only. For Ubuntu:
-- **Prebuilt:** `xenticorp-ripnamer-linux-x86_64` from [Releases](../../releases/latest) (Ubuntu 22.04+, normal Intel/AMD PCs). After downloading:
+- **Prebuilt:** `xenticorp-ripnamer-<version>-linux-x86_64` from [Releases](../../releases/latest) (Ubuntu 22.04+, normal Intel/AMD PCs). After downloading:
   ```
   cd ~/Downloads
-  chmod +x xenticorp-ripnamer-linux-x86_64 && ./xenticorp-ripnamer-linux-x86_64
+  chmod +x xenticorp-ripnamer-*-linux-x86_64 && ./xenticorp-ripnamer-*-linux-x86_64
   ```
-  Linux paths are case-sensitive (`Downloads`, not `downloads`). If the browser renamed it (e.g. `xenticorp-ripnamer-linux-x86_64(1)`), check with `ls | grep -i ripnamer`.
+  Linux paths are case-sensitive (`Downloads`, not `downloads`). If the browser renamed it (e.g. `xenticorp-ripnamer-3.0.1-linux-x86_64(1)`), check with `ls | grep -i ripnamer`.
 - **Build it yourself** (needed on Ubuntu older than 22.04, or on a Raspberry Pi / ARM — check with `uname -m`: `aarch64` = ARM): put `ripnamer.py`, `xenticorp.png` and `build.sh` together, then `chmod +x build.sh && ./build.sh`. It installs what it needs, asks about the API key, and can add an app-menu entry.
 - **Or just run the script:** `sudo apt install python3-tk && pip install sv-ttk` then `python3 ripnamer.py`.
 
@@ -135,11 +135,12 @@ From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `p
 - Only the icon uses `xenticorp.ico`; the header logo is drawn in code.
 
 ## Releasing
-Push a version tag and GitHub Actions does the rest:
-```
-git tag vX.Y && git push --tags
-```
-`.github/workflows/release.yml` runs the tests, builds the Windows exe and Linux binary (no key baked in), and attaches both plus `SHA256SUMS.txt` to a GitHub Release named after the tag. Keep the asset names as they are: Xenticorp.net links to `/releases/latest/download/<name>`.
+1. Set the new version in `ripnamer_app/__init__.py` (`VERSION = "X.Y"`) and `version_info.txt`, and commit.
+2. Push a matching tag and GitHub Actions does the rest:
+   ```
+   git tag vX.Y && git push --tags
+   ```
+`.github/workflows/release.yml` checks that the tag matches `VERSION`, runs the tests, builds the Windows exe and Linux binary (no key baked in), and attaches `Xenticorp-Ripnamer-X.Y.exe`, `xenticorp-ripnamer-X.Y-linux-x86_64` and `SHA256SUMS.txt` to a GitHub Release named after the tag. Xenticorp.net finds the newest files through the GitHub API, so keep the `Xenticorp-Ripnamer-*.exe` / `xenticorp-ripnamer-*-linux-x86_64` pattern. `SHA256SUMS.txt` keeps its fixed name.
 
 Never commit `ripnamer_key.py` (it's in `.gitignore`).
 

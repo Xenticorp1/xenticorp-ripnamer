@@ -17,6 +17,11 @@ jobs:
           python-version: "3.12"
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+      # The version goes into the download file names, so the tag and the app must agree.
+      - name: Tag matches app version
+        run: |
+          app=$(python -c "import ripnamer_app; print(ripnamer_app.VERSION)")
+          [ "v$app" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME doesn't match VERSION $app in ripnamer_app/__init__.py"; exit 1; }
 
   windows:
     needs: test
@@ -40,11 +45,11 @@ jobs:
           --version-file version_info.txt ripnamer.py
       - name: Rename asset
         shell: bash
-        run: mv "dist/Xenticorp Ripnamer.exe" dist/Xenticorp-Ripnamer.exe
+        run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${GITHUB_REF_NAME#v}.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/Xenticorp-Ripnamer.exe
+          path: dist/Xenticorp-Ripnamer-*.exe
           if-no-files-found: error
 
   linux:
@@ -68,11 +73,11 @@ jobs:
           --name xenticorp-ripnamer --collect-data sv_ttk
           --add-data "xenticorp.png:." ripnamer.py
       - name: Rename asset
-        run: mv dist/xenticorp-ripnamer dist/xenticorp-ripnamer-linux-x86_64
+        run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${GITHUB_REF_NAME#v}-linux-x86_64"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/xenticorp-ripnamer-linux-x86_64
+          path: dist/xenticorp-ripnamer-*-linux-x86_64
           if-no-files-found: error
 
   release:
@@ -88,16 +93,17 @@ jobs:
       - name: Checksums
         working-directory: assets
         run: |
-          chmod +x xenticorp-ripnamer-linux-x86_64
-          sha256sum Xenticorp-Ripnamer.exe xenticorp-ripnamer-linux-x86_64 > SHA256SUMS.txt
+          chmod +x xenticorp-ripnamer-*-linux-x86_64
+          sha256sum Xenticorp-Ripnamer-*.exe xenticorp-ripnamer-*-linux-x86_64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      # Asset names are fixed: Xenticorp.net links to /releases/latest/download/<name>.
+      # Binaries carry the version (Xenticorp-Ripnamer-3.1.exe); Xenticorp.net finds them
+      # through the GitHub API. SHA256SUMS.txt keeps a fixed name for /releases/latest/download/.
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: |
-            assets/Xenticorp-Ripnamer.exe
-            assets/xenticorp-ripnamer-linux-x86_64
+            assets/Xenticorp-Ripnamer-*.exe
+            assets/xenticorp-ripnamer-*-linux-x86_64
             assets/SHA256SUMS.txt
           fail_on_unmatched_files: true
