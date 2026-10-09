@@ -45,7 +45,7 @@ jobs:
           --version-file version_info.txt ripnamer.py
       - name: Rename asset
         shell: bash
-        run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${GITHUB_REF_NAME#v}.exe"
+        run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${GITHUB_REF_NAME}.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -73,7 +73,7 @@ jobs:
           --name xenticorp-ripnamer --collect-data sv_ttk
           --add-data "xenticorp.png:." ripnamer.py
       - name: Rename asset
-        run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${GITHUB_REF_NAME#v}-linux-x86_64"
+        run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${GITHUB_REF_NAME}-linux-x86_64"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -96,7 +96,7 @@ jobs:
           chmod +x xenticorp-ripnamer-*-linux-x86_64
           sha256sum Xenticorp-Ripnamer-*.exe xenticorp-ripnamer-*-linux-x86_64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      # Binaries carry the version (Xenticorp-Ripnamer-3.1.exe); Xenticorp.net finds them
+      # Binaries carry the tag (Xenticorp-Ripnamer-v3.1.0.exe); Xenticorp.net finds them
       # through the GitHub API. SHA256SUMS.txt keeps a fixed name for /releases/latest/download/.
       - uses: softprops/action-gh-release@v2
         with:
