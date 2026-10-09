@@ -30,15 +30,19 @@ def is_ready(row: dict) -> bool:
     return row_kind(row) in ("ok", "warn") and row["dest"] is not None
 
 
-def plan(files, episodes, show, start_ep, min_minutes, overrides, library_root=None):
+def plan(files, episodes, show, start_ep, min_minutes, overrides, library_root=None, anchors=None):
     """
     files:      [{"path": Path, "duration": sec}]
     episodes:   [{"number", "title", "runtime", "season", "episode"}]
-                'number' = position counted from start_ep; season/episode = what goes in the name
+                'number' = position counted from start_ep; season/episode = what goes in the name.
+                Entries with pick_only=True are used only for anchored files, never by counting.
     show:       {"id", "name", "year"}
     overrides:  {str(path): True/False} manual include/skip
-    Returns rows: {path, duration, include, dest, status}
+    anchors:    {str(path): number} "Set episode…": that file gets episode #number and the
+                files after it keep counting from there
+    Returns rows: {path, duration, include, dest, status, number, anchored}
     """
+    anchors = anchors or {}
     durs = sorted(f["duration"] for f in files if f["duration"] and f["duration"] >= min_minutes * 60)
     median = durs[len(durs) // 2] if durs else None
     ep_by_num = {e["number"]: e for e in episodes}
@@ -57,14 +61,17 @@ def plan(files, episodes, show, start_ep, min_minutes, overrides, library_root=N
         include = overrides.get(str(p), auto)
         if not include:
             rows.append({"path": p, "duration": d, "include": False, "dest": None,
-                         "status": "skip: manual" if str(p) in overrides else reason})
+                         "status": "skip: manual" if str(p) in overrides else reason,
+                         "number": None, "anchored": False})
             continue
 
-        epnum, next_ep = next_ep, next_ep + 1
+        anchored = str(p) in anchors
+        epnum = anchors[str(p)] if anchored else next_ep
+        next_ep = epnum + 1
         ep = ep_by_num.get(epnum)
-        if ep is None:
+        if ep is None or (ep.get("pick_only") and not anchored):
             rows.append({"path": p, "duration": d, "include": True, "dest": None,
-                         "status": f"no episode #{epnum} here"})
+                         "status": f"no episode #{epnum} here", "number": epnum, "anchored": anchored})
             continue
 
         season, epn = ep["season"], ep["episode"]
@@ -74,7 +81,7 @@ def plan(files, episodes, show, start_ep, min_minutes, overrides, library_root=N
         else:
             dest = p.with_name(fname)
 
-        status = "OK"
+        status = "OK (set)" if anchored else "OK"
         rt = ep.get("runtime")
         if rt and d and abs(d / 60 - rt) > max(3, rt * 0.15):
             status = f"CHECK: expected ~{rt}m"
@@ -83,5 +90,6 @@ def plan(files, episodes, show, start_ep, min_minutes, overrides, library_root=N
         if str(dest).lower() in used:
             status = "CONFLICT: duplicate"
         used.add(str(dest).lower())
-        rows.append({"path": p, "duration": d, "include": True, "dest": dest, "status": status})
+        rows.append({"path": p, "duration": d, "include": True, "dest": dest, "status": status,
+                     "number": epnum, "anchored": anchored})
     return rows

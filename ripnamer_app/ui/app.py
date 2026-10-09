@@ -13,11 +13,14 @@ from ..config import BAKED_KEY, load_config, save_config
 from ..media import VIDEO_EXTS, fmt_bytes, fmt_dur, list_videos, scan_folder
 from ..mover import Progress, execute, undo
 from ..planner import is_ready, plan, row_kind
-from ..tmdb import TMDb, scheme_episodes
+from ..tmdb import TMDb, position, scheme_episodes
+from .picker import EpisodePicker
 from .settings import SettingsDialog
 from .theme import Theme, draw_brand, prepare_process, set_window_icon
 
 STANDARD = "Standard seasons"
+CONTINUOUS = "Continuous (across seasons)"
+BUILTIN = [STANDARD, CONTINUOUS]  # always first in the Numbering list; TMDb orderings follow
 WHEEL = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
 
@@ -44,6 +47,8 @@ class App:
         # state
         self.results, self.show, self.groups, self.group_subs = [], None, [], []
         self.files, self.episodes, self.rows, self.overrides = [], [], [], {}
+        self.anchors, self.anchor_key = {}, None   # "Set episode…" {path: number}, and the list they index
+        self.start_number = 1                       # plan() start: first episode, or its timeline position
         self._tmdb = None
         self.busy = False
         self.stale = True
@@ -68,6 +73,7 @@ class App:
         self.scheme_var = V(value=STANDARD)
         self.volume_var = V()
         self.naming_var = V(value="standard")
+        self.specials_var = tk.BooleanVar(value=True)
         self.scheme_hint_var = V(value="Normal TMDb seasons.")
         self.org_var = tk.BooleanVar(value=c.get("organize", False))
         self.lib_var = V(value=c.get("library_root", ""))
@@ -169,7 +175,7 @@ class App:
         sch.grid(row=0, column=0, sticky="ew")
         sch.columnconfigure(1, weight=1)
         ttk.Label(sch, text="Numbering").grid(row=0, column=0, sticky="w", pady=3)
-        self.scheme_box = ttk.Combobox(sch, textvariable=self.scheme_var, state="readonly", values=[STANDARD],
+        self.scheme_box = ttk.Combobox(sch, textvariable=self.scheme_var, state="readonly", values=BUILTIN,
                                        width=22)
         self.scheme_box.grid(row=0, column=1, sticky="ew", padx=(12, 0), pady=3)
         ttk.Label(sch, textvariable=self.scheme_hint_var, style="Muted.TLabel", wraplength=S(330),
@@ -186,6 +192,8 @@ class App:
         self.start_lbl.grid(row=1, column=0, sticky="w", pady=3)
         ttk.Spinbox(g3, from_=1, to=999, width=6, textvariable=self.start_var).grid(row=1, column=1, sticky="e",
                                                                                     padx=(12, 0), pady=3)
+        self.specials_chk = ttk.Checkbutton(c3, text="Include specials in air-date order",
+                                            variable=self.specials_var)
         nb = self.naming_box = ttk.Frame(c3)
         ttk.Label(nb, text="Name files with").grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(nb, text="Standard SxxExx (recommended)", value="standard",
@@ -240,8 +248,8 @@ class App:
         self.empty_lbl = ttk.Label(tf, text="Nothing to preview yet.\n\nPick a folder, select a show, then hit "
                                             "Preview.", style="Muted.TLabel", justify="center")
         self.empty_lbl.place(relx=0.5, rely=0.45, anchor="center")
-        ttk.Label(right, text="Tip: double-click or right-click a row to include / skip it. "
-                              "Episodes renumber automatically.", style="Muted.TLabel").grid(row=2, column=0,
+        ttk.Label(right, text="Tip: double-click a row to include / skip it. Right-click for more, like "
+                              "Set episode…", style="Muted.TLabel").grid(row=2, column=0,
                                                                                           sticky="w", pady=(6, 0))
         # job panel (progress + cancel), shown only while renaming/undoing
         jp = self.job_panel = ttk.Frame(right)
@@ -275,7 +283,7 @@ class App:
         self.tree.bind("<Double-1>", lambda e: self.toggle_row(self.tree.identify_row(e.y)))
         self.tree.bind("<Button-3>", self.on_right_click)
         self.folder_var.trace_add("write", self.on_folder_change)
-        for v in (self.season_var, self.start_var, self.min_var, self.lib_var, self.naming_var):
+        for v in (self.season_var, self.start_var, self.min_var, self.lib_var, self.naming_var, self.specials_var):
             v.trace_add("write", self.mark_stale)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.lib_state()
@@ -462,6 +470,7 @@ class App:
 
     def on_folder_change(self, *_):
         self.overrides.clear()
+        self.anchors.clear()
         self.update_filecount()
         self.mark_stale()
 
@@ -513,6 +522,7 @@ class App:
         if not sel:
             return
         s = self.show = self.results[sel[0]]
+        self.anchors.clear()
         self.showname_var.set(s["name"])
         self.showmeta_var.set(f"{s['year'] or 'year ?'}  ·  tmdbid-{s['id']}")
         self.search_box.grid_remove()
@@ -527,6 +537,7 @@ class App:
         if self.rows and not messagebox.askyesno(APP, "Change show? This clears the current preview."):
             return
         self.show, self.rows = None, []
+        self.anchors.clear()
         self.reset_schemes()
         self.render()
         self.locked_box.grid_remove()
@@ -537,11 +548,14 @@ class App:
     # ================================================================= numbering schemes
 
     def scheme_index(self) -> int:
-        """-1 = standard seasons, else index into self.groups."""
+        """Index into self.groups, or -1 for Standard / Continuous."""
         try:
-            return list(self.scheme_box.cget("values")).index(self.scheme_var.get()) - 1
+            return list(self.scheme_box.cget("values")).index(self.scheme_var.get()) - len(BUILTIN)
         except ValueError:
             return -1
+
+    def continuous(self) -> bool:
+        return self.scheme_var.get() == CONTINUOUS
 
     def set_scheme_ui(self):
         if self.scheme_index() >= 0:
@@ -553,13 +567,17 @@ class App:
         else:
             self.volume_box.grid_remove()
             self.season_spin.grid()
-            self.season_lbl.config(text="Season")
-            self.start_lbl.config(text="First episode on this disc")
+            self.season_lbl.config(text="Start at season" if self.continuous() else "Season")
+            self.start_lbl.config(text="Start at episode" if self.continuous() else "First episode on this disc")
             self.naming_box.grid_remove()
+        if self.continuous():
+            self.specials_chk.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        else:
+            self.specials_chk.grid_remove()
 
     def reset_schemes(self, hint="Normal TMDb seasons."):
         self.groups, self.group_subs = [], []
-        self.scheme_box.config(values=[STANDARD])
+        self.scheme_box.config(values=BUILTIN)
         self.scheme_var.set(STANDARD)
         self.scheme_hint_var.set(hint)
         self.set_scheme_ui()
@@ -580,14 +598,19 @@ class App:
                                          f"Normal TMDb seasons. (Couldn't check orderings: {err})")
                 return
             self.groups = res
-            self.scheme_box.config(values=[STANDARD] + [f"{g['type']}: {g['name']}" for g in res])
+            self.scheme_box.config(values=BUILTIN + [f"{g['type']}: {g['name']}" for g in res])
             self.scheme_hint_var.set(f"Normal TMDb seasons. {len(res)} other ordering(s) in the list.")
         self.run_task(work, done, "Looking up orderings…")
 
     def on_scheme(self, *_):
         i = self.scheme_index()
+        self.anchors.clear()
         self.set_scheme_ui()
         self.mark_stale()
+        if self.continuous():
+            self.scheme_hint_var.set("Counts straight through the seasons, for discs that span two seasons. "
+                                     "Specials slot in where they aired.")
+            return
         if i < 0:
             self.scheme_hint_var.set("Normal TMDb seasons.")
             return
@@ -637,8 +660,8 @@ class App:
 
     def replan(self):
         library = self.lib_var.get().strip() if self.org_var.get() else None
-        self.rows = plan(self.files, self.episodes, self.show, _num(self.start_var, 1),
-                         _num(self.min_var, 10), self.overrides, library)
+        self.rows = plan(self.files, self.episodes, self.show, self.start_number,
+                         _num(self.min_var, 10), self.overrides, library, self.anchors)
         self.stale = False
         self.render()
         n = sum(1 for r in self.rows if row_kind(r) == "warn")
@@ -654,20 +677,43 @@ class App:
         if self.org_var.get() and not self.lib_var.get().strip():
             return messagebox.showwarning(APP, "Pick a library folder, or untick 'Move into Jellyfin library'.")
         self.persist()
-        show_id, season = self.show["id"], _num(self.season_var, 1)
-        if self.scheme_index() >= 0:
+        show_id, season, start = self.show["id"], _num(self.season_var, 1), _num(self.start_var, 1)
+        if self.continuous():
+            specials = bool(self.specials_var.get())
+            key = ("continuous", show_id, specials)
+
+            def fetch():
+                t = self.tmdb()
+                return t.with_all_specials(show_id, t.timeline(show_id, specials))
+        elif self.scheme_index() >= 0:
             vi = self.volume_box.current()
             if not self.group_subs or vi < 0:
                 return messagebox.showwarning(APP, "Pick a volume for that ordering first.")
             sub, naming = self.group_subs[vi], self.naming_var.get()
+            key = ("scheme", self.scheme_var.get(), vi)
             fetch = lambda: scheme_episodes(sub, naming)  # noqa: E731
         else:
+            key = ("standard", show_id, season)
             fetch = lambda: self.tmdb().season(show_id, season)  # noqa: E731
 
         def done(res, err):
             if err:
                 return self.error(err)
-            self.files, self.episodes = res
+            files, episodes = res
+            if self.continuous():
+                n = position([e for e in episodes if not e.get("pick_only")], season, start)
+                if n is None:
+                    extra = position(episodes, season, start) is not None
+                    return self.error(f"S{season:02}E{start:02} isn't in the timeline for {self.show['name']}. " + (
+                        "It's a special with no air date (or specials are off), so it has no place in the order. "
+                        "Start from a regular episode and use right-click › Set episode… for it."
+                        if extra else "Check the season and episode numbers."))
+            else:
+                n = start
+            if key != self.anchor_key:  # different episode list: old "Set episode" picks no longer apply
+                self.anchors.clear()
+                self.anchor_key = key
+            self.files, self.episodes, self.start_number = files, episodes, n
             if not self.files:
                 self.rows = []
                 self.render()
@@ -691,7 +737,29 @@ class App:
         self.menu.delete(0, "end")
         self.menu.add_command(label="Skip this file" if r["include"] else "Include this file",
                               command=lambda: self.toggle_row(iid))
+        live = not self.stale and not self.busy and bool(self.episodes)
+        self.menu.add_command(label="Set episode…", command=lambda: self.set_episode(iid),
+                              state="normal" if live and r["include"] else "disabled")
+        if str(r["path"]) in self.anchors:
+            self.menu.add_command(label="Clear set episode", command=lambda: self.clear_episode(iid),
+                                  state="normal" if live else "disabled")
         self.menu.tk_popup(e.x_root, e.y_root)
+
+    def set_episode(self, iid):
+        if not iid or not self.rows or self.stale or self.busy:
+            return
+        r = self.rows[int(iid)]
+
+        def pick(number):
+            self.anchors[str(r["path"])] = number
+            self.replan()
+        EpisodePicker(self, r["path"].name, self.episodes, r.get("number"), pick)
+
+    def clear_episode(self, iid):
+        if not iid or not self.rows or self.stale or self.busy:
+            return
+        self.anchors.pop(str(self.rows[int(iid)]["path"]), None)
+        self.replan()
 
     # ================================================================= rename / undo
 
@@ -701,8 +769,12 @@ class App:
         if not todo or self.stale or self.busy:
             return
         warn = sum(1 for r in todo if row_kind(r) == "warn")
-        where = (f"{self.scheme_var.get()} › {self.volume_var.get().split('  (')[0]}" if self.scheme_index() >= 0
-                 else f"season {_num(self.season_var, 1)}")
+        if self.continuous():
+            where = f"continuous from S{_num(self.season_var, 1):02}E{_num(self.start_var, 1):02}"
+        elif self.scheme_index() >= 0:
+            where = f"{self.scheme_var.get()} › {self.volume_var.get().split('  (')[0]}"
+        else:
+            where = f"season {_num(self.season_var, 1)}"
         msg = f"Rename {len(todo)} file(s) as {self.show['name']}, {where}?"
         if warn:
             msg += f"\n\n⚠ {warn} have runtime mismatches. Double-check the order."
@@ -715,6 +787,7 @@ class App:
                 return self.error(err)
             n, log, errors, cancelled = res
             self.rows, self.overrides = [], {}
+            self.anchors.clear()
             self.render()
             self.update_filecount()
             head = f"Cancelled after {n} file(s)." if cancelled else f"Renamed {n} file(s)."

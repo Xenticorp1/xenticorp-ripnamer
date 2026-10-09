@@ -15,6 +15,7 @@ import tempfile
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -144,6 +145,36 @@ class PlannerTests(TmpDir):
         self.assertEqual(rows[0]["status"], "CONFLICT: exists")
         self.assertFalse(planner.is_ready(rows[0]))
 
+    def test_anchor_continues_counting_from_set_episode(self):
+        f = self.files(1452, 1448, 1460, 1450, 1455)
+        rows = planner.plan(f, eps(1, list("ABCDEFGHIJ")), SHOW, 1, 10, {},
+                            anchors={str(f[2]["path"]): 7})
+        self.assertEqual([r["number"] for r in rows], [1, 2, 7, 8, 9])
+        self.assertEqual([r["status"] for r in rows], ["OK", "OK", "OK (set)", "OK", "OK"])
+        self.assertTrue(rows[2]["anchored"] and not rows[3]["anchored"])
+        self.assertIn("S01E08 - H", rows[3]["dest"].name)
+
+    def test_anchored_row_still_gets_runtime_check(self):
+        f = self.files(1452, 600 * 6)
+        rows = planner.plan(f, eps(1, ["A", "B", "C"]), SHOW, 1, 10, {}, anchors={str(f[1]["path"]): 3})
+        self.assertEqual(rows[1]["status"], "CHECK: expected ~24m")
+
+    def test_specials_go_to_season_00(self):
+        f = self.files(1452, 3600)
+        special = {"number": 2, "title": "The Christmas Invasion", "runtime": 60, "season": 0, "episode": 2}
+        rows = planner.plan(f, eps(1, ["A"]) + [special], SHOW, 1, 10, {}, library_root=self.dir / "lib")
+        rel = rows[1]["dest"].relative_to(self.dir / "lib")
+        self.assertEqual(rel.parts[1], "Season 00")
+        self.assertEqual(rel.name, "Cowboy Bebop (1998) - S00E02 - The Christmas Invasion.mkv")
+
+    def test_pick_only_episode_needs_an_anchor(self):
+        f = self.files(1452, 1448)
+        extra = {"number": 2, "title": "X", "runtime": 24, "season": 0, "episode": 9, "pick_only": True}
+        rows = planner.plan(f, eps(1, ["A"]) + [extra], SHOW, 1, 10, {})
+        self.assertEqual(rows[1]["status"], "no episode #2 here")
+        rows = planner.plan(f, eps(1, ["A"]) + [extra], SHOW, 1, 10, {}, anchors={str(f[1]["path"]): 2})
+        self.assertEqual(rows[1]["status"], "OK (set)")
+
     def test_scheme_numbering(self):
         self.assertEqual(tmdb.scheme_numbers(["Volume 1", "Volume 2", "Specials", "Pilot arc"]), [1, 2, 0, 3])
         sub = {"number": 3, "episodes": [{"pos": 1, "title": "X", "runtime": 24, "orig_season": 2,
@@ -216,6 +247,94 @@ class TMDbTests(unittest.TestCase):
         self.assertEqual([s["name"] for s in subs], ["Volume 1", "Volume 2"])
         self.assertEqual([e["title"] for e in subs[1]["episodes"]], ["A", "B"])
         self.assertEqual(subs[1]["number"], 2)
+
+# Doctor Who (2005): the Christmas special aired between series 1 and 2.
+WHO = {
+    "/tv/57243": {"seasons": [{"season_number": 0, "episode_count": 2}, {"season_number": 1, "episode_count": 2},
+                              {"season_number": 2, "episode_count": 2}, {"season_number": 3, "episode_count": 0}]},
+    "/tv/57243/season/1": {"episodes": [
+        {"episode_number": 12, "name": "Bad Wolf", "runtime": 45, "air_date": "2005-06-11"},
+        {"episode_number": 13, "name": "The Parting of the Ways", "runtime": 45, "air_date": "2005-06-18"}]},
+    "/tv/57243/season/0": {"episodes": [
+        {"episode_number": 2, "name": "The Christmas Invasion", "runtime": 60, "air_date": "2005-12-25"},
+        {"episode_number": 3, "name": "Attack of the Graske", "runtime": 10, "air_date": None}]},
+    "/tv/57243/season/2": {"episodes": [
+        {"episode_number": 1, "name": "New Earth", "runtime": 45, "air_date": "2006-04-15"},
+        {"episode_number": 2, "name": "Tooth and Claw", "runtime": 45, "air_date": "2006-04-22"}]},
+}
+
+
+def who_client(calls=None):
+    """TMDb client that answers from WHO by URL path; records each path in calls."""
+    def opener(req, timeout):
+        path = urllib.parse.urlsplit(req.full_url).path.removeprefix("/3")
+        if calls is not None:
+            calls.append(path)
+        return FakeResp(json.dumps(WHO[path]).encode())
+    return tmdb.TMDb("k" * 32, opener=opener, sleep=lambda s: None)
+
+
+class TimelineTests(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+        self.t = who_client(self.calls)
+
+    @staticmethod
+    def codes(episodes):
+        return [f"S{e['season']:02}E{e['episode']:02}" for e in episodes]
+
+    def test_show_details_lists_seasons_with_episodes(self):
+        self.assertEqual(self.t.show_details(57243), [0, 1, 2])
+
+    def test_special_slots_in_by_air_date(self):
+        tl = self.t.timeline(57243)
+        self.assertEqual(self.codes(tl), ["S01E12", "S01E13", "S00E02", "S02E01", "S02E02"])
+        self.assertEqual([e["number"] for e in tl], [1, 2, 3, 4, 5])
+        self.assertEqual(tl[2]["air_date"], "2005-12-25")
+        self.assertEqual(tmdb.position(tl, 2, 1), 4)
+        self.assertIsNone(tmdb.position(tl, 9, 9))
+
+    def test_specials_off(self):
+        self.assertEqual(self.codes(self.t.timeline(57243, include_specials=False)),
+                         ["S01E12", "S01E13", "S02E01", "S02E02"])
+
+    def test_seasons_fetched_once_and_cache_untouched(self):
+        self.t.timeline(57243)
+        self.t.timeline(57243, include_specials=False)
+        self.assertEqual(sorted(self.calls), sorted(set(self.calls)))
+        self.assertEqual([e["number"] for e in self.t.season(57243, 2)], [1, 2])  # not renumbered
+
+    def test_undated_special_only_in_picker(self):
+        tl = self.t.timeline(57243)
+        self.assertNotIn("S00E03", self.codes(tl))
+        picker = self.t.with_all_specials(57243, tl)
+        self.assertEqual(self.codes(picker)[-1], "S00E03")
+        self.assertEqual((picker[-1]["number"], picker[-1]["pick_only"]), (6, True))
+        # specials off: both specials are still pickable
+        off = self.t.with_all_specials(57243, self.t.timeline(57243, include_specials=False))
+        self.assertEqual(self.codes(off)[-2:], ["S00E02", "S00E03"])
+
+
+class ContinuousPlanTests(TmpDir):
+    def test_disc_spanning_two_seasons_and_a_special(self):
+        c = who_client()
+        tl = c.with_all_specials(57243, c.timeline(57243))
+        files = []
+        for i, d in enumerate((2700, 2700, 3600, 2700, 2700)):
+            p = self.dir / f"title_t{i:02}.mkv"
+            p.write_bytes(b"")
+            files.append({"path": p, "duration": d})
+        show = {"id": 57243, "name": "Doctor Who", "year": "2005"}
+        rows = planner.plan(files, tl, show, tmdb.position(tl, 1, 12), 10, {}, library_root=self.dir / "lib")
+        names = [r["dest"].relative_to(self.dir / "lib" / "Doctor Who (2005) [tmdbid-57243]").as_posix()
+                 for r in rows]
+        self.assertEqual(names, [
+            "Season 01/Doctor Who (2005) - S01E12 - Bad Wolf.mkv",
+            "Season 01/Doctor Who (2005) - S01E13 - The Parting of the Ways.mkv",
+            "Season 00/Doctor Who (2005) - S00E02 - The Christmas Invasion.mkv",
+            "Season 02/Doctor Who (2005) - S02E01 - New Earth.mkv",
+            "Season 02/Doctor Who (2005) - S02E02 - Tooth and Claw.mkv"])
+        self.assertTrue(all(r["status"] == "OK" for r in rows))
 
 # ----------------------------------------------------------------------------- mover
 
