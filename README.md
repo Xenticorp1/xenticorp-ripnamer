@@ -4,6 +4,8 @@ Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
 `title_t01.mkv` → `Show (Year) [tmdbid-123]/Season 01/Show (Year) - S01E10 - Episode Title.mkv`
 
+![Xenticorp Ripnamer main window: rip folder, show search, episode numbering, and the preview & rename table](docs/screenshot.png)
+
 ## Download
 Prebuilt apps are on the [Releases page](../../releases/latest):
 
