@@ -10,3 +10,6 @@ __pycache__/
 
 # Leftover from an interrupted cross-drive move
 *.ripnamer-part
+
+# Generated at build time by make_version_info.py
+version_info.txt

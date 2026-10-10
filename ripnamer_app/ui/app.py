@@ -36,7 +36,7 @@ class App:
         prepare_process()
         self.cfg = load_config()
         self.root = tk.Tk(className="XenticorpRipnamer")  # WM_CLASS, matches the Linux .desktop entry
-        self.root.title(f"{APP}  ·  Xenticorp")
+        self.root.title(f"Xenticorp Ripnamer v{VERSION}")  # taskbar, Alt-Tab and window search show this
         set_window_icon(self.root)
         self.ui_scale = self.cfg.get("ui_scale", "auto")
         self.t = Theme(self.root, self.cfg.get("theme", "dark"), self.ui_scale)

@@ -5,6 +5,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
 
+from .. import VERSION
 from ..config import resource
 
 # Cyan on near-black
@@ -142,6 +143,9 @@ def draw_brand(c: tk.Canvas, t: Theme):
             x = c.bbox(item)[2] + track
     item = c.create_text(x + S(10), mid, text="//", font=t.brand_big, fill=P["trace_hi"], anchor="w")
     item = c.create_text(c.bbox(item)[2] + S(10), mid, text="RIPNAMER", font=t.brand_big, fill=P["fg"], anchor="w")
+    title_end = c.bbox(item)[2]
+    item = c.create_text(title_end + S(10), c.bbox(item)[3] - desc, text=f"v{VERSION}", font=t.brand_small,
+                         fill=P["trace_hi"], anchor="sw")
     x_end = c.bbox(item)[2]
     c.create_text(0, S(54), text="MAKEMKV RIPS  →  JELLYFIN EPISODE NAMES", font=t.brand_small,
                   fill=P["muted"], anchor="w")
@@ -158,4 +162,4 @@ def draw_brand(c: tk.Canvas, t: Theme):
             c.create_oval(sx - S(4), y - S(4), sx + S(4), y + S(4), outline=col, width=max(1, S(2)))
             c.create_oval(ex - S(3), y2 - S(3), ex + S(3), y2 + S(3), fill=col, outline="")
     c.create_line(0, h - 1, w, h - 1, fill=P["trace"])
-    c.create_line(0, h - 1, x_end, h - 1, fill=P["accent"], width=max(1, S(2)))
+    c.create_line(0, h - 1, title_end, h - 1, fill=P["accent"], width=max(1, S(2)))

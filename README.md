@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.1.2)
+# Xenticorp Ripnamer  (v3.1.3)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -36,13 +36,13 @@ Keep these together in one folder:
 | `build.sh` | Builds the Linux version |
 | `xenticorp.ico` | Windows icon (optional — swap in your own, must be a real .ico or PNG) |
 | `xenticorp.png` | Linux icon (optional) |
-| `version_info.txt` | Company/product info shown in Properties → Details (optional, Windows) |
+| `make_version_info.py` | Writes `version_info.txt` (Properties → Details on Windows) from the app's version; `build.bat` runs it |
 
 ## Build (Windows)
 1. Needs Python 3.10+. If missing: `winget install Python.Python.3.12` (then reopen the terminal).
 2. Double-click `build.bat`.
 3. It asks for a TMDb API key to bake into the exe — paste it, or press Enter to skip.
-4. Output: `dist\Xenticorp Ripnamer.exe`
+4. Output: `dist\Xenticorp Ripnamer vX.Y.Z.exe` (the version is in the name so it shows in Windows search)
 
 Free TMDb key: themoviedb.org → Settings → API. The v3 "API Key" or v4 "Read Access Token" both work.
 
@@ -171,7 +171,7 @@ From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `p
 - Only the icon uses `xenticorp.ico`; the header logo is drawn in code.
 
 ## Releasing
-1. Set the new version in `ripnamer_app/__init__.py` (`VERSION = "X.Y.Z"`) and `version_info.txt`, and commit.
+1. Set the new version in `ripnamer_app/__init__.py` (`VERSION = "X.Y.Z"`) and commit. That's the only place: the window title, header, exe file name and Properties → Details all read it.
 2. Push a matching tag and GitHub Actions does the rest:
    ```
    git tag vX.Y.Z && git push --tags
