@@ -114,10 +114,12 @@ class PlannerTests(TmpDir):
         return out
 
     def test_skips_extras_and_play_all_and_flags_runtime(self):
-        f = self.files(4380, 1452, 1448, 190, 1100, 1460)
-        rows = planner.plan(f, eps(10, ["A", "B", "C", "D"]), SHOW, 10, 10, {})
+        f = self.files(4380, 1452, 1448, 190, 1460, 1455)
+        episodes = eps(10, ["A", "B", "C", "D"])
+        episodes[2]["runtime"] = 40  # TMDb says C is long; the file isn't -> CHECK, not a skip
+        rows = planner.plan(f, episodes, SHOW, 10, 10, {})
         self.assertEqual([r["status"] for r in rows],
-                         ["skip: play-all?", "OK", "OK", "skip: extra (short)", "CHECK: expected ~24m", "OK"])
+                         ["skip: play-all?", "OK", "OK", "skip: extra (short)", "CHECK: expected ~40:20", "OK"])
         self.assertEqual(rows[1]["dest"].name, "Cowboy Bebop (1998) - S01E10 - A.mkv")
         self.assertEqual(rows[5]["dest"].name, "Cowboy Bebop (1998) - S01E13 - D.mkv")
 
@@ -157,7 +159,7 @@ class PlannerTests(TmpDir):
     def test_anchored_row_still_gets_runtime_check(self):
         f = self.files(1452, 600 * 6)
         rows = planner.plan(f, eps(1, ["A", "B", "C"]), SHOW, 1, 10, {}, anchors={str(f[1]["path"]): 3})
-        self.assertEqual(rows[1]["status"], "CHECK: expected ~24m")
+        self.assertEqual(rows[1]["status"], "CHECK: expected ~24:00")
 
     def test_specials_go_to_season_00(self):
         f = self.files(1452, 3600)
@@ -247,6 +249,131 @@ class TMDbTests(unittest.TestCase):
         self.assertEqual([s["name"] for s in subs], ["Volume 1", "Volume 2"])
         self.assertEqual([e["title"] for e in subs[1]["episodes"]], ["A", "B"])
         self.assertEqual(subs[1]["number"], 2)
+
+class NamingHelperTests(unittest.TestCase):
+    def test_parse_named(self):
+        P = planner.parse_named
+        self.assertEqual(P("s1 e1.mkv"), (1, 1))
+        self.assertEqual(P("Metalocalypse (2006) - S01E02 - Dethklok.mkv"), (1, 2))
+        self.assertEqual(P("show.S02.E10.mkv"), (2, 10))
+        self.assertEqual(P("s2e12.mp4"), (2, 12))
+        self.assertEqual(P("Show 1x02.mkv"), (1, 2))
+        for name in ("title_t01.mkv", "METALOCALYPSE_t03.mkv", "rip 1920x1080.mkv", "Bosses1e2.mkv",
+                     "Show 2x720p.mkv"):
+            self.assertIsNone(P(name), name)
+
+    def test_parse_length(self):
+        self.assertEqual(planner.parse_length("11:34"), 694)
+        self.assertEqual(planner.parse_length(" 11 "), 660)
+        self.assertEqual(planner.parse_length("11.5"), 690)
+        self.assertIsNone(planner.parse_length(""))
+        for bad in ("abc", "1:75", "0", "-3"):
+            with self.assertRaises(ValueError, msg=bad):
+                planner.parse_length(bad)
+
+    def test_calibration_needs_three_agreeing_pairs(self):
+        self.assertAlmostEqual(planner.calibration([(694, 15)] * 3), 694 / 900)
+        self.assertEqual(planner.calibration([(694, 15)] * 2), 1.0)
+        self.assertEqual(planner.calibration([(694, 15), (900, 15), (1400, 15), (300, 15)]), 1.0)
+        self.assertEqual(planner.calibration([(694, 15), (694, None)] * 2), 1.0)  # missing runtimes don't count
+
+
+# Metalocalypse S1 disc 1 as ripped: seven 11:34 episodes, extras of 5:34, 4:13 and 20:18, and
+# three files already named by hand that natural order puts after the "METALOCALYPSE…" ones.
+METAL_FILES = [("METALOCALYPSE_t00.mkv", 694), ("METALOCALYPSE_t01.mkv", 694), ("METALOCALYPSE_t02.mkv", 694),
+               ("METALOCALYPSE_t03.mkv", 334), ("METALOCALYPSE_t04.mkv", 694), ("METALOCALYPSE_t05.mkv", 694),
+               ("METALOCALYPSE_t06.mkv", 253), ("METALOCALYPSE_t07.mkv", 694), ("METALOCALYPSE_t08.mkv", 1218),
+               ("METALOCALYPSE_t09.mkv", 694), ("s1 e1.mkv", 694), ("s1 e3.mkv", 694), ("s2 e1.mkv", 694)]
+METAL_SHOW = {"id": 1960, "name": "Metalocalypse", "year": "2006"}
+
+
+def metal_episodes():
+    """Continuous timeline: S1 E1-12 then S2 E1-3, TMDb says 15 min, two have no runtime."""
+    out = [{"number": n, "title": f"Episode {n}", "runtime": None if n in (5, 8) else 15,
+            "season": 1 if n <= 12 else 2, "episode": n if n <= 12 else n - 12} for n in range(1, 16)]
+    return out
+
+
+class EpisodeLengthTests(TmpDir):
+    def setUp(self):
+        super().setUp()
+        self.f = []
+        for name, d in METAL_FILES:
+            (self.dir / name).write_bytes(b"")
+            self.f.append({"path": self.dir / name, "duration": d})
+
+    def plan(self, **kw):
+        rows = planner.plan(self.f, metal_episodes(), METAL_SHOW, 1, 5, {}, **kw)
+        return {r["path"].name: r for r in rows}
+
+    def test_auto_length_skips_extras_without_false_checks(self):
+        self.assertEqual(planner.auto_length(self.f, 5), 694)
+        rows = self.plan()
+        self.assertEqual(rows["METALOCALYPSE_t03.mkv"]["status"], "skip: 5:34 vs ~11:34 episode")
+        self.assertEqual(rows["METALOCALYPSE_t06.mkv"]["status"], "skip: extra (short)")
+        self.assertEqual(rows["METALOCALYPSE_t08.mkv"]["status"], "skip: 20:18 vs ~11:34 episode")
+        statuses = [r["status"] for r in rows.values()]
+        self.assertFalse([s for s in statuses if s.startswith("CHECK")])
+        self.assertEqual(statuses.count("OK (no TMDb runtime)"), 2)  # E5 and E8: neutral
+        # episodes 1, 3 and 13 belong to the hand-named files, so counting jumps over them
+        self.assertEqual([rows[f"METALOCALYPSE_t0{i}.mkv"]["number"] for i in (0, 1, 2, 4, 5, 7, 9)],
+                         [2, 4, 5, 6, 7, 8, 9])
+        for name, code in (("s1 e1.mkv", "S01E01"), ("s1 e3.mkv", "S01E03"), ("s2 e1.mkv", "S02E01")):
+            self.assertEqual(rows[name]["status"], f"skip: already named {code}")  # left alone (default)
+            self.assertFalse(rows[name]["include"])
+
+    def test_already_named_pinned_and_tidied_when_not_left_alone(self):
+        rows = self.plan(leave_named=False)
+        for name, n, code in (("s1 e1.mkv", 1, "S01E01"), ("s1 e3.mkv", 3, "S01E03"), ("s2 e1.mkv", 13, "S02E01")):
+            self.assertEqual((rows[name]["number"], rows[name]["status"]), (n, "OK (already named)"))
+            self.assertIn(f" - {code} - ", rows[name]["dest"].name)
+            self.assertTrue(planner.is_ready(rows[name]))  # loose name -> tidied to the standard one
+        self.assertEqual(rows["METALOCALYPSE_t00.mkv"]["number"], 2)
+
+    def test_already_standard_name_is_not_renamed(self):
+        std = self.dir / "Metalocalypse (2006) - S01E01 - Episode 1.mkv"
+        std.write_bytes(b"")
+        rows = planner.plan([{"path": std, "duration": 694}], metal_episodes(), METAL_SHOW, 1, 5, {},
+                            leave_named=False)
+        self.assertEqual(rows[0]["status"], "OK (already named)")
+        self.assertFalse(planner.is_ready(rows[0]))
+
+    def test_named_file_outside_this_list_and_manual_include(self):
+        f = [{"path": self.dir / "s3 e9.mkv", "duration": 694}, {"path": self.dir / "s1 e3.mkv", "duration": 694}]
+        rows = planner.plan(f, metal_episodes(), METAL_SHOW, 1, 5, {str(f[1]["path"]): True})
+        self.assertEqual(rows[0]["status"], "skip: named S03E09 (not in this list)")
+        self.assertEqual((rows[1]["number"], rows[1]["status"]), (3, "OK (already named)"))  # included by hand
+
+    def test_max_length(self):
+        rows = self.plan(max_minutes=15, tolerance=1.0)
+        self.assertEqual(rows["METALOCALYPSE_t08.mkv"]["status"], "skip: over max length")
+        rows = self.plan(max_minutes=0, tolerance=1.0)
+        self.assertTrue(rows["METALOCALYPSE_t08.mkv"]["include"])  # max rule off (and < 1.8x: no play-all)
+
+    def test_manual_length_overrides_auto(self):
+        rows = self.plan(ep_length=planner.parse_length("20:18"))
+        self.assertTrue(rows["METALOCALYPSE_t08.mkv"]["include"])
+        self.assertEqual(rows["METALOCALYPSE_t08.mkv"]["status"], "OK")
+        self.assertEqual(rows["METALOCALYPSE_t00.mkv"]["status"], "skip: 11:34 vs ~20:18 episode")
+
+    def test_manual_length_drives_checks(self):
+        rows = self.plan(ep_length=694, tolerance=0.05)
+        self.assertFalse([r for r in rows.values() if r["status"].startswith("CHECK")])
+        # threshold is max(1 min, tolerance): strict keeps the files so only the CHECK rule applies
+        rows = self.plan(ep_length=660, tolerance=0.05, strict=True)  # off by 34 s: under the 1-min floor
+        self.assertEqual(rows["METALOCALYPSE_t00.mkv"]["status"], "OK")
+        rows = self.plan(ep_length=600, tolerance=0.05, strict=True)  # off by 94 s
+        self.assertEqual(rows["METALOCALYPSE_t00.mkv"]["status"], "CHECK: expected ~10:00")
+        rows = self.plan(ep_length=600, tolerance=0.20, strict=True)  # 20% of 10:00 = 2 min > 94 s
+        self.assertEqual(rows["METALOCALYPSE_t00.mkv"]["status"], "OK")
+
+    def test_strict_order_skips_nothing(self):
+        rows = self.plan(strict=True)
+        metal = [r for n, r in rows.items() if n.startswith("METALOCALYPSE")]
+        self.assertTrue(all(r["include"] for r in metal))
+        self.assertEqual([r["number"] for r in metal], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        self.assertEqual(rows["METALOCALYPSE_t03.mkv"]["status"], "CHECK: expected ~11:34")
+
 
 # Doctor Who (2005): the Christmas special aired between series 1 and 2.
 WHO = {
