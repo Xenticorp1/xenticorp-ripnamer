@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.1.1)
+# Xenticorp Ripnamer  (v3.1.2)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -103,6 +103,18 @@ Works in every numbering mode. Right-click a row → **Set episode…** opens a 
 
 That file gets the episode you picked, and the files after it keep counting from there. Handy when a disc skips an episode or has one out of order. Rows you set show **OK (set)** (or the usual ⚠ runtime warning). Right-click → **Clear set episode** undoes it. Changing the folder, the show or the numbering clears all of them.
 
+### Episode length, already-named files, strict order
+Matching is always by file order (plus **Set episode…**). Lengths only decide which files are skipped as extras and which get a ⚠ CHECK. The settings below step 3's numbering options are per disc and reset when you pick another folder:
+
+- **Episode length** (mm:ss): how long a real episode on this disc is. Leave it blank for **Auto**, the median length of the files, shown as a hint (e.g. `Auto: 11:34`).
+- **Tolerance ±** (default 25%): files further than this from the episode length are skipped as extras, e.g. `skip: 5:34 vs ~11:34 episode`. A file that's off-length but fits the TMDb runtime of the episode it would get is kept, e.g. a 60-min special among 45-min episodes. The Settings minimum ("Skip files shorter than") still applies first.
+- **Maximum length** (minutes, 0 = off): files longer than this are skipped (`skip: over max length`). While it's 0, anything about 2× the episode length is treated as a play-all title.
+- **Runtime checks** compare each file with your Episode length if you set one. Otherwise they use TMDb's runtime scaled to this disc: if TMDb says 15 min and the files are all 11:34, that's learned from at least 3 matching files, so they don't all get flagged. ⚠ appears when a file is off by more than 1 minute or the Tolerance %, whichever is bigger. Episodes with no TMDb runtime show `OK (no TMDb runtime)`.
+- **Already-named files**: files whose names already say the episode (`S01E02`, `s1 e2`, `1x02`) keep it, and counting skips over those episodes. So on a disc with `s1 e1.mkv` and `s1 e3.mkv`, the other files become E02, E04, E05… With **Leave already-named files alone** (default on) they're skipped entirely. Untick it to have them tidied to the standard name, shown as `OK (already named)`. Files already in the standard name aren't touched.
+- **Strict filename order (no auto-skipping)**: every file, in name order, gets the next episode. Only your own skips and **Set episode…** change that.
+
+Example, Metalocalypse S1 disc 1 (Continuous, minimum 5 min): seven 11:34 episodes become S01E02, E04–E09, around the hand-named `s1 e1` / `s1 e3` / `s2 e1`. The 5:34, 4:13 and 20:18 extras are skipped, and there are no false ⚠ even though TMDb says 15 min.
+
 ## Renaming & moving
 - **Same drive:** instant rename.
 - **Different drive** (e.g. rips on one disk, Jellyfin library on another or a NAS): files are copied with a live progress bar showing file x/y, MB copied, speed and time left, plus a **Cancel** button.
@@ -113,8 +125,8 @@ That file gets the episode you picked, and the files after it keep counting from
 
 ## Preview table
 - **Green ✔** – ready.
-- **Grey –** – skipped: shorter than the Detection setting (extras), or ~2× median length (play-all title).
-- **Orange ⚠** – runtime doesn't match TMDb. Usually the order is off or an extra slipped in.
+- **Grey –** – skipped: shorter than the Detection setting, outside Episode length ± Tolerance, over Maximum length, a play-all title, or already named (see above).
+- **Orange ⚠** – length doesn't match the episode (your Episode length, or TMDb scaled to this disc). Usually the order is off or an extra slipped in.
 - **Red ✖** – more files than episodes in that season/volume, or the target file already exists. Won't be renamed.
 
 Double-click a row (or right-click → Skip / Include) to include or skip it; episodes renumber automatically. Right-click → **Set episode…** pins a file to a specific episode.

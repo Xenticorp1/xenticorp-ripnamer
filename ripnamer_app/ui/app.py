@@ -12,7 +12,7 @@ from .. import APP, VERSION
 from ..config import BAKED_KEY, load_config, save_config
 from ..media import VIDEO_EXTS, fmt_bytes, fmt_dur, list_videos, scan_folder
 from ..mover import Progress, execute, undo
-from ..planner import is_ready, plan, row_kind
+from ..planner import auto_length, is_ready, mmss, parse_length, plan, row_kind
 from ..tmdb import TMDb, position, scheme_episodes
 from .picker import EpisodePicker
 from .settings import SettingsDialog
@@ -74,6 +74,13 @@ class App:
         self.volume_var = V()
         self.naming_var = V(value="standard")
         self.specials_var = tk.BooleanVar(value=True)
+        # per-disc episode length rules (reset when the folder changes)
+        self.eplen_var = V()                      # mm:ss, blank = Auto
+        self.tol_var = V(value="25")              # ± %
+        self.maxlen_var = V(value="0")            # minutes, 0 = off
+        self.eplen_hint_var = V(value="Blank = Auto (median length of the files)")
+        self.leave_named_var = tk.BooleanVar(value=True)
+        self.strict_var = tk.BooleanVar(value=False)
         self.scheme_hint_var = V(value="Normal TMDb seasons.")
         self.org_var = tk.BooleanVar(value=c.get("organize", False))
         self.lib_var = V(value=c.get("library_root", ""))
@@ -200,18 +207,37 @@ class App:
                         variable=self.naming_var).grid(row=1, column=0, sticky="w", pady=(2, 0))
         ttk.Radiobutton(nb, text="This scheme's numbering", value="scheme",
                         variable=self.naming_var).grid(row=2, column=0, sticky="w", pady=(2, 0))
-        ttk.Separator(c3).grid(row=3, column=0, sticky="ew", pady=10)
+        el = ttk.Frame(c3)
+        el.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        el.columnconfigure(0, weight=1)
+        ttk.Label(el, text="Episode length").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Entry(el, textvariable=self.eplen_var, width=7).grid(row=0, column=1, sticky="e", padx=(12, 0), pady=3)
+        ttk.Label(el, textvariable=self.eplen_hint_var, style="Muted.TLabel").grid(row=1, column=0, columnspan=3,
+                                                                                  sticky="w")
+        ttk.Label(el, text="Tolerance ±").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Spinbox(el, from_=0, to=100, width=5, textvariable=self.tol_var).grid(row=2, column=1, sticky="e",
+                                                                                padx=(12, 0), pady=3)
+        ttk.Label(el, text="%").grid(row=2, column=2, sticky="w", padx=(4, 0))
+        ttk.Label(el, text="Maximum length").grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Spinbox(el, from_=0, to=999, width=5, textvariable=self.maxlen_var).grid(row=3, column=1, sticky="e",
+                                                                                   padx=(12, 0), pady=3)
+        ttk.Label(el, text="min (0 = off)").grid(row=3, column=2, sticky="w", padx=(4, 0))
+        ttk.Checkbutton(el, text="Leave already-named files alone", variable=self.leave_named_var).grid(
+            row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(el, text="Strict filename order (no auto-skipping)", variable=self.strict_var).grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        ttk.Separator(c3).grid(row=4, column=0, sticky="ew", pady=10)
         ttk.Checkbutton(c3, text="Move into Jellyfin library", variable=self.org_var,
-                        command=self.lib_state).grid(row=4, column=0, sticky="w")
+                        command=self.lib_state).grid(row=5, column=0, sticky="w")
         lr = ttk.Frame(c3)
-        lr.grid(row=5, column=0, sticky="ew", pady=(6, 0))
+        lr.grid(row=6, column=0, sticky="ew", pady=(6, 0))
         lr.columnconfigure(0, weight=1)
         self.lib_entry = ttk.Entry(lr, textvariable=self.lib_var)
         self.lib_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.lib_btn = ttk.Button(lr, text="Browse…", command=self.pick_lib)
         self.lib_btn.grid(row=0, column=1)
         self.lib_hint = ttk.Label(c3, style="Muted.TLabel", wraplength=S(330), justify="left")
-        self.lib_hint.grid(row=6, column=0, sticky="w", pady=(6, 0))
+        self.lib_hint.grid(row=7, column=0, sticky="w", pady=(6, 0))
 
     def _build_right(self, outer):
         S, P = self.t.S, self.t.P
@@ -283,7 +309,8 @@ class App:
         self.tree.bind("<Double-1>", lambda e: self.toggle_row(self.tree.identify_row(e.y)))
         self.tree.bind("<Button-3>", self.on_right_click)
         self.folder_var.trace_add("write", self.on_folder_change)
-        for v in (self.season_var, self.start_var, self.min_var, self.lib_var, self.naming_var, self.specials_var):
+        for v in (self.season_var, self.start_var, self.min_var, self.lib_var, self.naming_var, self.specials_var,
+                  self.eplen_var, self.tol_var, self.maxlen_var, self.leave_named_var, self.strict_var):
             v.trace_add("write", self.mark_stale)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.lib_state()
@@ -471,6 +498,10 @@ class App:
     def on_folder_change(self, *_):
         self.overrides.clear()
         self.anchors.clear()
+        self.eplen_var.set("")      # length rules are per disc
+        self.tol_var.set("25")
+        self.maxlen_var.set("0")
+        self.eplen_hint_var.set("Blank = Auto (median length of the files)")
         self.update_filecount()
         self.mark_stale()
 
@@ -658,10 +689,26 @@ class App:
             self.empty_lbl.place(relx=0.5, rely=0.45, anchor="center")
         self.refresh_buttons()
 
+    def length_rules(self):
+        """Step 3 length settings -> plan() keyword args. ValueError (with a message) if unreadable."""
+        try:
+            ep_length = parse_length(self.eplen_var.get())
+        except ValueError:
+            raise ValueError(f"Episode length \"{self.eplen_var.get().strip()}\" isn't a time. "
+                             "Use mm:ss like 11:34, minutes like 22, or leave it blank for Auto.") from None
+        return {"ep_length": ep_length, "tolerance": max(0, min(_num(self.tol_var, 25), 100)) / 100,
+                "max_minutes": max(0, _num(self.maxlen_var, 0)), "leave_named": bool(self.leave_named_var.get()),
+                "strict": bool(self.strict_var.get())}
+
     def replan(self):
         library = self.lib_var.get().strip() if self.org_var.get() else None
+        rules = self.length_rules()
+        auto = auto_length(self.files, _num(self.min_var, 10))
+        self.eplen_hint_var.set(f"Auto: {mmss(auto)}" if auto and not rules["ep_length"] else
+                                f"Set by you (Auto would be {mmss(auto)})" if auto else
+                                "Blank = Auto (median length of the files)")
         self.rows = plan(self.files, self.episodes, self.show, self.start_number,
-                         _num(self.min_var, 10), self.overrides, library, self.anchors)
+                         _num(self.min_var, 10), self.overrides, library, self.anchors, **rules)
         self.stale = False
         self.render()
         n = sum(1 for r in self.rows if row_kind(r) == "warn")
@@ -676,6 +723,10 @@ class App:
             return messagebox.showwarning(APP, "Search and select a show first (step 2).")
         if self.org_var.get() and not self.lib_var.get().strip():
             return messagebox.showwarning(APP, "Pick a library folder, or untick 'Move into Jellyfin library'.")
+        try:
+            self.length_rules()
+        except ValueError as e:
+            return messagebox.showwarning(APP, str(e))
         self.persist()
         show_id, season, start = self.show["id"], _num(self.season_var, 1), _num(self.start_var, 1)
         if self.continuous():
