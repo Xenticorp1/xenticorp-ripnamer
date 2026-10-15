@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Linux version of Xenticorp Ripnamer into ./dist/xenticorp-ripnamer
+# Builds the Linux version of Xenticorp Ripnamer into ./dist/xenticorp-ripnamer-vX.Y.Z
 # Usage:  chmod +x build.sh && ./build.sh
 set -e
 cd "$(dirname "$0")"
@@ -13,6 +13,7 @@ fi
 python3 -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip pyinstaller sv-ttk >/dev/null
+VER=$(python -c "import ripnamer_app; print(ripnamer_app.VERSION)")
 
 echo
 read -r -p "Paste TMDb API key to bake in (or just press Enter to skip): " KEY
@@ -23,21 +24,21 @@ trap 'rm -f ripnamer_key.py' EXIT
 EXTRA=()
 [ -f ripnamer_key.py ] && EXTRA+=(--hidden-import ripnamer_key)
 [ -f xenticorp.png ] && EXTRA+=(--add-data "xenticorp.png:.")
-pyinstaller --noconfirm --clean --onefile --windowed --name xenticorp-ripnamer \
+pyinstaller --noconfirm --clean --onefile --windowed --name "xenticorp-ripnamer-v$VER" \
   --collect-data sv_ttk "${EXTRA[@]}" ripnamer.py
 
 echo
-echo "Done: $(pwd)/dist/xenticorp-ripnamer"
+echo "Done: $(pwd)/dist/xenticorp-ripnamer-v$VER"
 echo "Tip: run the tests any time with:  python3 -m unittest discover -s tests"
 read -r -p "Add it to your app menu? [y/N] " yn
 if [[ "$yn" =~ ^[Yy]$ ]]; then
   mkdir -p ~/.local/bin ~/.local/share/applications ~/.local/share/icons
-  cp dist/xenticorp-ripnamer ~/.local/bin/
+  cp "dist/xenticorp-ripnamer-v$VER" ~/.local/bin/xenticorp-ripnamer   # fixed name: the menu entry survives updates
   [ -f xenticorp.png ] && cp xenticorp.png ~/.local/share/icons/xenticorp-ripnamer.png
   cat > ~/.local/share/applications/xenticorp-ripnamer.desktop <<DESK
 [Desktop Entry]
 Type=Application
-Name=Xenticorp Ripnamer
+Name=Xenticorp Ripnamer v$VER
 Comment=Rename MakeMKV rips for Jellyfin
 Exec=$HOME/.local/bin/xenticorp-ripnamer
 Icon=$HOME/.local/share/icons/xenticorp-ripnamer.png

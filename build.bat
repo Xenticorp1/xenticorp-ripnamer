@@ -1,6 +1,6 @@
 @echo off
 setlocal
-REM Builds RipNamer.exe (single file, no console window) into .\dist\
+REM Builds "Xenticorp Ripnamer vX.Y.Z.exe" (single file, no console window) into .\dist\
 cd /d "%~dp0"
 
 if not exist ripnamer.py (
@@ -25,6 +25,16 @@ if not defined PY (
   goto :err
 )
 
+REM Version comes from ripnamer_app\__init__.py: it goes in the exe name and Properties -> Details
+set "VER="
+for /f "delims=" %%v in ('%PY% -c "import ripnamer_app; print(ripnamer_app.VERSION)"') do set "VER=%%v"
+if not defined VER (
+  echo Couldn't read the version from ripnamer_app.
+  goto :err
+)
+%PY% make_version_info.py
+if errorlevel 1 goto :err
+
 echo.
 set "KEY="
 set /p "KEY=Paste TMDb API key to bake into the exe (or just press Enter to skip): "
@@ -45,11 +55,7 @@ if exist xenticorp.ico (
 ) else (
   echo [note] xenticorp.ico not found - building without custom icon.
 )
-if exist version_info.txt (
-  set "EXTRA=%EXTRA% --version-file version_info.txt"
-) else (
-  echo [note] version_info.txt not found - building without file details.
-)
+set "EXTRA=%EXTRA% --version-file version_info.txt"
 
 echo Using: %PY%
 REM pillow lets PyInstaller accept a PNG renamed/used as the icon
@@ -60,7 +66,7 @@ if errorlevel 1 (
   goto :err
 )
 
-%PY% -m PyInstaller --noconfirm --onefile --windowed --name "Xenticorp Ripnamer" --clean --collect-data sv_ttk %EXTRA% ripnamer.py
+%PY% -m PyInstaller --noconfirm --onefile --windowed --name "Xenticorp Ripnamer v%VER%" --clean --collect-data sv_ttk %EXTRA% ripnamer.py
 if errorlevel 1 (
   echo.
   echo PyInstaller failed - see the error above.
@@ -69,7 +75,7 @@ if errorlevel 1 (
 
 if exist ripnamer_key.py del ripnamer_key.py
 echo.
-echo Done: %~dp0dist\Xenticorp Ripnamer.exe
+echo Done: %~dp0dist\Xenticorp Ripnamer v%VER%.exe
 pause
 exit /b 0
 

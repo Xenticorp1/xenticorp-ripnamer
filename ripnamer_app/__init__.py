@@ -10,4 +10,4 @@ Package layout
 """
 
 APP = "RipNamer"
-VERSION = "3.1.2"
+VERSION = "3.1.3"

@@ -21,7 +21,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ripnamer_app import media, mover, planner, tmdb  # noqa: E402
+import make_version_info  # noqa: E402
+from ripnamer_app import VERSION, media, mover, planner, tmdb  # noqa: E402
 
 # ----------------------------------------------------------------------------- synthetic files
 
@@ -249,6 +250,16 @@ class TMDbTests(unittest.TestCase):
         self.assertEqual([s["name"] for s in subs], ["Volume 1", "Volume 2"])
         self.assertEqual([e["title"] for e in subs[1]["episodes"]], ["A", "B"])
         self.assertEqual(subs[1]["number"], 2)
+
+class VersionInfoTests(unittest.TestCase):
+    def test_exe_details_follow_version(self):
+        text = make_version_info.render("3.1.3")
+        self.assertIn("filevers=(3, 1, 3, 0), prodvers=(3, 1, 3, 0)", text)
+        self.assertIn("StringStruct('FileDescription', 'Xenticorp Ripnamer v3.1.3')", text)
+        self.assertIn("StringStruct('ProductVersion', '3.1.3')", text)
+        self.assertIn("filevers=(4, 0, 0, 0)", make_version_info.render("4.0"))
+        self.assertIn(f"'{VERSION}'", make_version_info.render(VERSION))
+
 
 class NamingHelperTests(unittest.TestCase):
     def test_parse_named(self):

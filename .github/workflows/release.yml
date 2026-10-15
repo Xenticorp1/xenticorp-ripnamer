@@ -64,6 +64,8 @@ jobs:
               raise SystemExit("The launcher is the prebuilt one: compiling from source didn't happen.")
           PY
           rm -rf prebuilt
+      - name: Write version_info.txt from VERSION
+        run: python make_version_info.py
       - name: Build (same flags as build.bat)
         run: >
           python -m PyInstaller --noconfirm --clean --onefile --windowed
