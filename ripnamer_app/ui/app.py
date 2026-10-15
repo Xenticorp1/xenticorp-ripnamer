@@ -304,8 +304,15 @@ class App:
         self.brand.bind("<Configure>", lambda e: draw_brand(self.brand, self.t))
         self.left.bind("<Configure>", self._left_layout)
         self.lcanvas.bind("<Configure>", self._left_layout)
-        self.left_outer.bind("<Enter>", lambda e: [self.lcanvas.bind_all(q, self._left_wheel) for q in WHEEL])
-        self.left_outer.bind("<Leave>", lambda e: [self.lcanvas.unbind_all(q) for q in WHEEL])
+        # One wheel handler for the window: it scrolls the left column wherever the pointer is over it
+        # (child widgets included). Dropdowns and number boxes don't change value on the wheel, so
+        # scrolling past them can't silently switch the numbering mode.
+        self._wheel_acc = 0.0
+        self.lcanvas.configure(yscrollincrement=self.t.S(20))
+        for q in WHEEL:
+            self.root.bind_all(q, self._on_wheel)
+            for cls in ("TCombobox", "TSpinbox"):
+                self.root.unbind_class(cls, q)
         self.search_entry.bind("<Return>", self.do_search)
         self.results_list.bind("<<ListboxSelect>>", self.on_highlight)
         self.scheme_box.bind("<<ComboboxSelected>>", self.on_scheme)
@@ -360,9 +367,26 @@ class App:
             self.lsb.grid_remove()
             self.lcanvas.yview_moveto(0)
 
-    def _left_wheel(self, e):
-        if self.left.winfo_reqheight() > self.lcanvas.winfo_height() + 1:
-            self.lcanvas.yview_scroll(int(-e.delta / 120) if e.delta else (-1 if e.num == 4 else 1), "units")
+    def _on_wheel(self, e):
+        w = self.root.winfo_containing(e.x_root, e.y_root)
+        inside = w
+        while inside is not None and inside is not self.left_outer:
+            inside = inside.master
+        if inside is None:
+            return None  # not over the left column: the preview table etc. scroll themselves
+        if isinstance(w, tk.Listbox) and w.yview() != (0.0, 1.0):
+            return None  # a list with more items than fit scrolls itself
+        if self.left.winfo_reqheight() <= self.lcanvas.winfo_height() + 1:
+            return "break"
+        if e.num in (4, 5):  # X11
+            steps = -3 if e.num == 4 else 3
+        else:  # Windows: 120 per notch; touchpads and smooth wheels send less, so keep the remainder
+            self._wheel_acc += -e.delta / 120 * 3
+            steps = int(self._wheel_acc)
+            self._wheel_acc -= steps
+        if steps:
+            self.lcanvas.yview_scroll(steps, "units")
+        return "break"
 
     # ================================================================= background work
 
