@@ -15,7 +15,7 @@ class EpisodePicker:
 
     def __init__(self, app, file_name, episodes, current, on_pick):
         self.app, self.episodes, self.on_pick = app, episodes, on_pick
-        t, P = app.t, app.t.P
+        t = app.t
         win = self.win = tk.Toplevel(app.root)
         win.title("Set episode")
         win.transient(app.root)
@@ -33,10 +33,7 @@ class EpisodePicker:
         lf.grid(row=2, column=0, sticky="nsew")
         lf.columnconfigure(0, weight=1)
         lf.rowconfigure(0, weight=1)
-        self.listbox = tk.Listbox(lf, height=14, exportselection=False, activestyle="none",
-                                  bg=P["list_bg"], fg=P["fg"], selectbackground=P["sel"],
-                                  selectforeground=P["fg"] if t.name == "dark" else "#000",
-                                  highlightthickness=0, borderwidth=0, font=("Segoe UI", 10))
+        self.listbox = tk.Listbox(lf, height=14, exportselection=False, **t.listbox_options())
         sb = ttk.Scrollbar(lf, orient="vertical", command=self.listbox.yview)
         self.listbox.configure(yscrollcommand=sb.set)
         self.listbox.grid(row=0, column=0, sticky="nsew")

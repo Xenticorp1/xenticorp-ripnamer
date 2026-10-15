@@ -261,6 +261,24 @@ class VersionInfoTests(unittest.TestCase):
         self.assertIn(f"'{VERSION}'", make_version_info.render(VERSION))
 
 
+class LookTests(unittest.TestCase):
+    def test_fonts_bundled_with_licenses(self):
+        root = Path(__file__).resolve().parents[1] / "fonts"
+        self.assertEqual(sorted(p.name for p in root.glob("*.ttf")),
+                         ["Anton-Regular.ttf", "Montserrat-Bold.ttf", "Montserrat-Regular.ttf"])
+        for lic in ("Anton-OFL.txt", "Montserrat-OFL.txt"):
+            self.assertIn("SIL Open Font License", (root / lic).read_text(encoding="utf-8"))
+
+    def test_both_palettes_define_the_same_colours(self):
+        try:
+            from ripnamer_app.ui.theme import PALETTES
+        except ImportError:  # no tkinter on this Python
+            self.skipTest("tkinter not available")
+        self.assertEqual(set(PALETTES["dark"]), set(PALETTES["light"]))
+        self.assertEqual(PALETTES["dark"]["action"], "#ffd60a")  # design system yellow
+        self.assertEqual(PALETTES["dark"]["live"], "#3db87a")    # design system green
+
+
 class NamingHelperTests(unittest.TestCase):
     def test_parse_named(self):
         P = planner.parse_named

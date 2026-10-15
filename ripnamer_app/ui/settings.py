@@ -65,12 +65,8 @@ class SettingsDialog:
         tr = ttk.Frame(body)
         tr.grid(row=row, column=0, sticky="w", pady=(4, 0))
         ttk.Radiobutton(tr, text="Dark", value="dark", variable=self.theme).pack(side="left")
-        ttk.Radiobutton(tr, text="Light", value="light", variable=self.theme).pack(side="left", padx=12)
+        ttk.Radiobutton(tr, text="Light (unofficial)", value="light", variable=self.theme).pack(side="left", padx=12)
         row += 1
-        if not t.has_sv:
-            ttk.Label(body, text="(theme package not bundled)", style="Muted.TLabel").grid(row=row, column=0,
-                                                                                          sticky="w")
-            row += 1
 
         # --- size
         section("Interface size", "Saved per device. Auto follows this screen's scaling.")
@@ -114,7 +110,7 @@ class SettingsDialog:
         app.key_var.set(self.key.get().strip())
         app.min_var.set(str(_num(self.minutes.get(), 10)))
         new_scale = "auto" if self.size.get().startswith("Auto") else str(int(self.size.get().rstrip("%")) / 100)
-        new_theme = self.theme.get() if app.t.has_sv else app.t.name
+        new_theme = self.theme.get()
         restart = new_theme != app.t.name or new_scale != app.ui_scale
         app.theme_name, app.ui_scale = new_theme, new_scale
         app.persist()

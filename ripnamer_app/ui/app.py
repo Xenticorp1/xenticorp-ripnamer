@@ -93,13 +93,13 @@ class App:
 
     def _build(self):
         S, P, t = self.t.S, self.t.P, self.t
-        outer = ttk.Frame(self.root, padding=S(16))
+        outer = ttk.Frame(self.root, padding=S(16), style="Bg.TFrame")
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(1, weight=1)
 
         # header
-        header = ttk.Frame(outer)
+        header = ttk.Frame(outer, style="Bg.TFrame")
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, S(14)))
         header.columnconfigure(0, weight=1)
         self.brand = tk.Canvas(header, height=S(66), bg=P["bg"], highlightthickness=0)
@@ -110,30 +110,37 @@ class App:
         self._build_right(outer)
 
         # status bar
-        bar = ttk.Frame(outer)
+        bar = ttk.Frame(outer, style="Bg.TFrame")
         bar.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-        ttk.Label(bar, textvariable=self.status_var, style="Muted.TLabel").pack(side="left")
+        ttk.Label(bar, textvariable=self.status_var, style="Bg.Muted.TLabel").pack(side="left")
         ttk.Label(bar, text=f"XENTICORP  ·  RIPNAMER v{VERSION}", style="Brand.TLabel").pack(side="right")
         self.spinner = ttk.Progressbar(bar, mode="indeterminate", length=S(140))
         self.menu = tk.Menu(self.root, tearoff=0)
 
     def _card(self, parent, step, title, row):
-        f = ttk.LabelFrame(parent, padding=self.t.S(12), text=f" {step}  {title} ")
-        f.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        """A step card: panel surface, 1px line, yellow eyebrow heading. Returns its content frame."""
+        S = self.t.S
+        card = ttk.Frame(parent, style="Card.TFrame", padding=(S(16), S(12), S(16), S(16)))
+        card.grid(row=row, column=0, sticky="ew", pady=(0, S(12)))
+        card.columnconfigure(0, weight=1)
+        ttk.Label(card, text=f"{int(step):02}  ·  {title.upper()}", style="Eyebrow.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, S(10)))
+        f = ttk.Frame(card)
+        f.grid(row=1, column=0, sticky="ew")
         f.columnconfigure(0, weight=1)
         return f
 
     def _build_left(self, outer):
         S, P = self.t.S, self.t.P
         # scrollable column
-        lo = self.left_outer = ttk.Frame(outer)
+        lo = self.left_outer = ttk.Frame(outer, style="Bg.TFrame")
         lo.grid(row=1, column=0, sticky="nsew", padx=(0, S(16)))
         lo.rowconfigure(0, weight=1)
         self.lcanvas = tk.Canvas(lo, bg=P["bg"], highlightthickness=0, borderwidth=0)
         self.lcanvas.grid(row=0, column=0, sticky="ns")
         self.lsb = ttk.Scrollbar(lo, orient="vertical", command=self.lcanvas.yview)
         self.lcanvas.configure(yscrollcommand=self.lsb.set)
-        left = self.left = ttk.Frame(self.lcanvas)
+        left = self.left = ttk.Frame(self.lcanvas, style="Bg.TFrame")
         left.columnconfigure(0, weight=1)
         self.lcanvas.create_window(0, 0, window=left, anchor="nw")
 
@@ -159,10 +166,7 @@ class App:
         self.search_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.search_btn = ttk.Button(sr, text="Search", command=self.do_search)
         self.search_btn.grid(row=0, column=1)
-        self.results_list = tk.Listbox(sb, height=5, exportselection=False, activestyle="none",
-                                       bg=P["list_bg"], fg=P["fg"], selectbackground=P["sel"],
-                                       selectforeground=P["fg"] if self.t.name == "dark" else "#000",
-                                       highlightthickness=0, borderwidth=0, font=("Segoe UI", 10))
+        self.results_list = tk.Listbox(sb, height=5, exportselection=False, **self.t.listbox_options())
         self.results_list.grid(row=1, column=0, sticky="ew", pady=(8, 6))
         ttk.Label(sb, textvariable=self.overview_var, style="Muted.TLabel", wraplength=S(330),
                   justify="left").grid(row=2, column=0, sticky="w")
@@ -241,14 +245,14 @@ class App:
 
     def _build_right(self, outer):
         S, P = self.t.S, self.t.P
-        right = ttk.Frame(outer)
+        right = ttk.Frame(outer, style="Card.TFrame", padding=(S(16), S(12), S(16), S(16)))
         right.grid(row=1, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
 
         top = ttk.Frame(right)
-        top.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(top, text="4   Preview & rename", style="Step.TLabel").pack(side="left")
+        top.grid(row=0, column=0, sticky="ew", pady=(0, S(10)))
+        ttk.Label(top, text="04  ·  PREVIEW & RENAME", style="Eyebrow.TLabel").pack(side="left")
         self.counts = {}
         for key in ("skip", "bad", "warn", "ok"):
             self.counts[key] = ttk.Label(top, text="", style=f"{key}.Count.TLabel")
@@ -272,7 +276,7 @@ class App:
         tree.grid(row=0, column=0, sticky="nsew")
         ysb.grid(row=0, column=1, sticky="ns")
         self.empty_lbl = ttk.Label(tf, text="Nothing to preview yet.\n\nPick a folder, select a show, then hit "
-                                            "Preview.", style="Muted.TLabel", justify="center")
+                                            "Preview.", style="Empty.TLabel", justify="center")
         self.empty_lbl.place(relx=0.5, rely=0.45, anchor="center")
         ttk.Label(right, text="Tip: double-click a row to include / skip it. Right-click for more, like "
                               "Set episode…", style="Muted.TLabel").grid(row=2, column=0,

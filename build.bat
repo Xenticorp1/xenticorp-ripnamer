@@ -59,14 +59,14 @@ set "EXTRA=%EXTRA% --version-file version_info.txt"
 
 echo Using: %PY%
 REM pillow lets PyInstaller accept a PNG renamed/used as the icon
-%PY% -m pip install --upgrade pyinstaller sv-ttk pillow
+%PY% -m pip install --upgrade pyinstaller pillow
 if errorlevel 1 (
   echo.
   echo pip install failed - see the error above.
   goto :err
 )
 
-%PY% -m PyInstaller --noconfirm --onefile --windowed --name "Xenticorp Ripnamer v%VER%" --clean --collect-data sv_ttk %EXTRA% ripnamer.py
+%PY% -m PyInstaller --noconfirm --onefile --windowed --name "Xenticorp Ripnamer v%VER%" --clean --add-data "fonts;fonts" %EXTRA% ripnamer.py
 if errorlevel 1 (
   echo.
   echo PyInstaller failed - see the error above.

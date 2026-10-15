@@ -47,7 +47,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip wheel
           python -m pip install --no-binary pyinstaller --no-cache-dir pyinstaller
-          python -m pip install --upgrade sv-ttk pillow
+          python -m pip install --upgrade pillow
       - name: Check the launcher really was compiled here
         shell: bash
         run: |
@@ -69,7 +69,7 @@ jobs:
       - name: Build (same flags as build.bat)
         run: >
           python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name "Xenticorp Ripnamer" --collect-data sv_ttk
+          --name "Xenticorp Ripnamer" --add-data "fonts;fonts"
           --icon xenticorp.ico --add-data "xenticorp.ico;."
           --version-file version_info.txt ripnamer.py
       - name: Rename asset
@@ -95,11 +95,11 @@ jobs:
       - name: Refuse a baked-in key
         run: test ! -e ripnamer_key.py || { echo "ripnamer_key.py must not exist in CI"; exit 1; }
       - name: Install build tools
-        run: python -m pip install --upgrade pyinstaller sv-ttk
+        run: python -m pip install --upgrade pyinstaller
       - name: Build (same flags as build.sh)
         run: >
           python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name xenticorp-ripnamer --collect-data sv_ttk
+          --name xenticorp-ripnamer --add-data "fonts:fonts"
           --add-data "xenticorp.png:." ripnamer.py
       - name: Rename asset
         run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${GITHUB_REF_NAME}-linux-x86_64"
