@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.1.3)
+# Xenticorp Ripnamer  (v3.2.0)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -36,6 +36,7 @@ Keep these together in one folder:
 | `build.sh` | Builds the Linux version |
 | `xenticorp.ico` | Windows icon (optional — swap in your own, must be a real .ico or PNG) |
 | `xenticorp.png` | Linux icon (optional) |
+| `fonts/` | Anton and Montserrat, the Xenticorp brand fonts (SIL Open Font License). Bundled into the builds and loaded only for Ripnamer, nothing is installed |
 | `make_version_info.py` | Writes `version_info.txt` (Properties → Details on Windows) from the app's version; `build.bat` runs it |
 
 ## Build (Windows)
@@ -59,7 +60,7 @@ The `.exe` is Windows-only. For Ubuntu:
   ```
   Linux paths are case-sensitive (`Downloads`, not `downloads`). If the browser renamed it (e.g. `xenticorp-ripnamer-v3.1.0-linux-x86_64(1)`), check with `ls | grep -i ripnamer`.
 - **Build it yourself** (needed on Ubuntu older than 22.04, or on a Raspberry Pi / ARM — check with `uname -m`: `aarch64` = ARM): put `ripnamer.py`, `xenticorp.png` and `build.sh` together, then `chmod +x build.sh && ./build.sh`. It installs what it needs, asks about the API key, and can add an app-menu entry.
-- **Or just run the script:** `sudo apt install python3-tk && pip install sv-ttk` then `python3 ripnamer.py`.
+- **Or just run the script:** `sudo apt install python3-tk` then `python3 ripnamer.py`.
 
 Settings on Linux live in `~/.config/RipNamer/config.json`. If Auto interface size looks small under GNOME scaling, pick a size in ⚙ Settings.
 
@@ -134,7 +135,7 @@ Files are processed in natural filename order (t00, t01 … t10), which is MakeM
 
 ## Settings (⚙)
 - **TMDb API key** – change it any time; a new key is saved once a search succeeds. "Reset to built-in key" returns to the baked-in one.
-- **Theme** – dark / light.
+- **Theme** – **Dark** is the Xenticorp design system (the same look as xenticorp.net: neutral black and gray, yellow for actions, green for live, rust for danger, Anton and Montserrat). **Light (unofficial)** is an extra that isn't part of the design system.
 - **Interface size** – Auto (follows Windows scaling) or 100–250%. Saved per device.
 - **Detection** – "Skip files shorter than" N minutes (treated as extras). Default 10.
 - **About** – version, TMDb credit and a link to themoviedb.org.
@@ -182,6 +183,8 @@ Never commit `ripnamer_key.py` (it's in `.gitignore`).
 
 ## Credits
 This product uses the TMDB API but is not endorsed or certified by TMDB. ([themoviedb.org](https://www.themoviedb.org/))
+
+Fonts: [Anton](https://github.com/googlefonts/AntonFont) and [Montserrat](https://github.com/JulietaUla/Montserrat), both under the SIL Open Font License 1.1 (see `fonts/Anton-OFL.txt` and `fonts/Montserrat-OFL.txt`).
 
 ## License
 MIT, see [LICENSE](LICENSE).

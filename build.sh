@@ -12,7 +12,7 @@ fi
 
 python3 -m venv .venv
 . .venv/bin/activate
-pip install --upgrade pip pyinstaller sv-ttk >/dev/null
+pip install --upgrade pip pyinstaller >/dev/null
 VER=$(python -c "import ripnamer_app; print(ripnamer_app.VERSION)")
 
 echo
@@ -25,7 +25,7 @@ EXTRA=()
 [ -f ripnamer_key.py ] && EXTRA+=(--hidden-import ripnamer_key)
 [ -f xenticorp.png ] && EXTRA+=(--add-data "xenticorp.png:.")
 pyinstaller --noconfirm --clean --onefile --windowed --name "xenticorp-ripnamer-v$VER" \
-  --collect-data sv_ttk "${EXTRA[@]}" ripnamer.py
+  --add-data "fonts:fonts" "${EXTRA[@]}" ripnamer.py
 
 echo
 echo "Done: $(pwd)/dist/xenticorp-ripnamer-v$VER"

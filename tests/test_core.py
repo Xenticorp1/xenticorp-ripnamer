@@ -56,6 +56,33 @@ def make_mp4(path, seconds, moov_last=False, v1=False, pad=4096):
     Path(path).write_bytes(ftyp + (mdat + moov if moov_last else moov + mdat))
 
 
+def _full(kind, version, flags, body):
+    return _atom(kind, struct.pack(">I", (version << 24) | flags) + body)
+
+
+def make_fragmented_mp4(path, frags, frag_ticks, scale=90000, per_sample=False, mehd=None, in_moov=0,
+                        tfdt=True):
+    """Fragmented MP4 like OBS / ffmpeg -movflags frag_keyframe write: mvhd duration 0, then moof
+    fragments of 10 samples each lasting frag_ticks (track timescale). in_moov = ticks of samples
+    stored in moov before the fragments."""
+    mvhd = _full(b"mvhd", 0, 0, b"\0" * 8 + struct.pack(">II", 1000, 0) + b"\0" * 80)
+    tkhd = _full(b"tkhd", 0, 0, b"\0" * 8 + struct.pack(">I", 1) + b"\0" * 68)
+    mdhd = _full(b"mdhd", 0, 0, b"\0" * 8 + struct.pack(">II", scale, in_moov) + b"\0" * 4)
+    trak = _atom(b"trak", tkhd + _atom(b"mdia", mdhd))
+    trex = _full(b"trex", 0, 0, struct.pack(">IIIII", 1, 1, frag_ticks // 10, 0, 0))
+    mvex = _atom(b"mvex", (_full(b"mehd", 0, 0, struct.pack(">I", mehd)) if mehd else b"") + trex)
+    out = _atom(b"ftyp", b"iso5\0\0\0\0") + _atom(b"moov", mvhd + trak + mvex)
+    for i in range(frags):
+        tfhd = _full(b"tfhd", 0, 0, struct.pack(">I", 1))
+        dt = _full(b"tfdt", 1, 0, struct.pack(">Q", in_moov + i * frag_ticks)) if tfdt else b""
+        if per_sample:
+            trun = _full(b"trun", 0, 0x100, struct.pack(">I", 10) + struct.pack(">I", frag_ticks // 10) * 10)
+        else:
+            trun = _full(b"trun", 0, 0, struct.pack(">I", 10))
+        out += _atom(b"moof", _atom(b"traf", tfhd + dt + trun)) + _atom(b"mdat", b"\0" * 64)
+    Path(path).write_bytes(out)
+
+
 class TmpDir(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
@@ -78,6 +105,18 @@ class MediaTests(TmpDir):
         self.assertAlmostEqual(media.duration(self.dir / "a.mp4"), 1448)
         self.assertAlmostEqual(media.duration(self.dir / "b.mp4"), 1500)
         self.assertAlmostEqual(media.duration(self.dir / "c.m4v"), 60)
+
+    def test_fragmented_mp4(self):
+        # 60 fragments x 2 s = 120 s, using trex default durations
+        make_fragmented_mp4(self.dir / "a.mp4", 60, 180000)
+        self.assertAlmostEqual(media.duration(self.dir / "a.mp4"), 120)
+        make_fragmented_mp4(self.dir / "b.mp4", 60, 180000, per_sample=True)   # durations in trun
+        self.assertAlmostEqual(media.duration(self.dir / "b.mp4"), 120)
+        make_fragmented_mp4(self.dir / "c.mp4", 3, 180000, mehd=694000)       # mehd says 694 s
+        self.assertAlmostEqual(media.duration(self.dir / "c.mp4"), 694)
+        # first 5 s stored in moov, fragments after it with no tfdt: 5 + 60 x 2 = 125 s
+        make_fragmented_mp4(self.dir / "d.mp4", 60, 180000, in_moov=450000, tfdt=False)
+        self.assertAlmostEqual(media.duration(self.dir / "d.mp4"), 125)
 
     def test_garbage_is_none(self):
         (self.dir / "x.mkv").write_bytes(b"not a video" * 50)
@@ -259,6 +298,24 @@ class VersionInfoTests(unittest.TestCase):
         self.assertIn("StringStruct('ProductVersion', '3.1.3')", text)
         self.assertIn("filevers=(4, 0, 0, 0)", make_version_info.render("4.0"))
         self.assertIn(f"'{VERSION}'", make_version_info.render(VERSION))
+
+
+class LookTests(unittest.TestCase):
+    def test_fonts_bundled_with_licenses(self):
+        root = Path(__file__).resolve().parents[1] / "fonts"
+        self.assertEqual(sorted(p.name for p in root.glob("*.ttf")),
+                         ["Anton-Regular.ttf", "Montserrat-Bold.ttf", "Montserrat-Regular.ttf"])
+        for lic in ("Anton-OFL.txt", "Montserrat-OFL.txt"):
+            self.assertIn("SIL Open Font License", (root / lic).read_text(encoding="utf-8"))
+
+    def test_both_palettes_define_the_same_colours(self):
+        try:
+            from ripnamer_app.ui.theme import PALETTES
+        except ImportError:  # no tkinter on this Python
+            self.skipTest("tkinter not available")
+        self.assertEqual(set(PALETTES["dark"]), set(PALETTES["light"]))
+        self.assertEqual(PALETTES["dark"]["action"], "#ffd60a")  # design system yellow
+        self.assertEqual(PALETTES["dark"]["live"], "#3db87a")    # design system green
 
 
 class NamingHelperTests(unittest.TestCase):

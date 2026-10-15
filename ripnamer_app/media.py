@@ -74,7 +74,10 @@ def mkv_duration(path) -> float | None:
 
 
 def mp4_duration(path) -> float | None:
-    """Walk atoms to moov/mvhd. Works whether moov is at the start (faststart) or the end."""
+    """Walk atoms to moov/mvhd. Works whether moov is at the start (faststart) or the end.
+    Fragmented MP4s (OBS, some converters) leave mvhd at 0: then the fragment duration in
+    mvex/mehd is used, or failing that the end time of the last fragment (moof/traf timings).
+    Only atom headers are read; mdat payloads are skipped."""
     with open(path, "rb") as f:
         f.seek(0, 2)
         end = f.tell()
@@ -94,24 +97,105 @@ def mp4_duration(path) -> float | None:
                 yield kind, start + header, start + size
                 f.seek(start + size)
 
-        for kind, body, stop in atoms(end):
-            if kind != b"moov":
-                continue
+        def full_box(body):  # version, 24-bit flags
             f.seek(body)
-            for k2, b2, _ in atoms(stop):
-                if k2 == b"mvhd":
+            vf = struct.unpack(">I", f.read(4))[0]
+            return vf >> 24, vf & 0xFFFFFF
+
+        def u(n):
+            return int.from_bytes(f.read(n), "big")
+
+        movie_scale = movie_dur = mehd = None
+        fragmented = False
+        tracks = {}      # track_id -> {"scale": mdhd timescale, "default": trex default duration}
+        ends = {}        # track_id -> end time so far (samples in moov, then fragments), track timescale
+        for kind, body, stop in atoms(end):
+            if kind == b"moov":
+                f.seek(body)
+                for k2, b2, s2 in atoms(stop):
+                    if k2 == b"mvhd":
+                        version, _ = full_box(b2)
+                        f.read(16 if version == 1 else 8)
+                        movie_scale = u(4)
+                        movie_dur = u(8 if version == 1 else 4)
+                    elif k2 == b"trak":
+                        tid = scale = tdur = None
+                        f.seek(b2)
+                        for k3, b3, s3 in atoms(s2):
+                            if k3 == b"tkhd":
+                                version, _ = full_box(b3)
+                                f.read(16 if version == 1 else 8)
+                                tid = u(4)
+                            elif k3 == b"mdia":
+                                f.seek(b3)
+                                for k4, b4, _ in atoms(s3):
+                                    if k4 == b"mdhd":
+                                        version, _ = full_box(b4)
+                                        f.read(16 if version == 1 else 8)
+                                        scale = u(4)
+                                        tdur = u(8 if version == 1 else 4)
+                        if tid is not None and scale:
+                            tracks.setdefault(tid, {"default": 0})["scale"] = scale
+                            ends[tid] = tdur or 0  # samples already in moov come before the fragments
+                    elif k2 == b"mvex":
+                        fragmented = True
+                        f.seek(b2)
+                        for k3, b3, _ in atoms(s2):
+                            if k3 == b"mehd":
+                                version, _ = full_box(b3)
+                                mehd = u(8 if version == 1 else 4)
+                            elif k3 == b"trex":
+                                full_box(b3)
+                                tid = u(4)
+                                u(4)
+                                tracks.setdefault(tid, {"scale": None})["default"] = u(4)
+                if not fragmented:
+                    return movie_dur / movie_scale if movie_dur and movie_scale else None
+                if mehd and movie_scale:
+                    return mehd / movie_scale
+            elif kind == b"moof":
+                f.seek(body)
+                for k2, b2, s2 in atoms(stop):
+                    if k2 != b"traf":
+                        continue
+                    tid, default, base, total = None, None, None, 0
                     f.seek(b2)
-                    version = f.read(1)[0]
-                    f.read(3)
-                    if version == 1:
-                        f.read(16)
-                        scale, dur = struct.unpack(">IQ", f.read(12))
-                    else:
-                        f.read(8)
-                        scale, dur = struct.unpack(">II", f.read(8))
-                    return dur / scale if scale else None
-            return None
-    return None
+                    for k3, b3, _ in atoms(s2):
+                        if k3 == b"tfhd":
+                            _, flags = full_box(b3)
+                            tid = u(4)
+                            if flags & 0x01:
+                                u(8)
+                            if flags & 0x02:
+                                u(4)
+                            if flags & 0x08:
+                                default = u(4)
+                        elif k3 == b"tfdt":
+                            version, _ = full_box(b3)
+                            base = u(8 if version == 1 else 4)
+                        elif k3 == b"trun":
+                            _, flags = full_box(b3)
+                            count = u(4)
+                            if flags & 0x01:
+                                u(4)
+                            if flags & 0x04:
+                                u(4)
+                            if flags & 0x100:
+                                per = 4 * bin(flags & 0xF00).count("1")
+                                for _ in range(count):
+                                    total += u(4)
+                                    f.read(per - 4)
+                            else:
+                                d = default if default is not None else tracks.get(tid, {}).get("default", 0)
+                                total += count * (d or 0)
+                    if tid is None:
+                        continue
+                    start_t = base if base is not None else ends.get(tid, 0)
+                    ends[tid] = max(ends.get(tid, 0), start_t + total)
+        secs = [t / tracks[tid]["scale"] for tid, t in ends.items() if tracks.get(tid, {}).get("scale")]
+        if movie_dur and movie_scale:
+            secs.append(movie_dur / movie_scale)
+        return max(secs) if secs and max(secs) > 0 else None
 
 # ----------------------------------------------------------------------------- public API
 
