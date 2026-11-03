@@ -113,10 +113,21 @@ class TMDb:
                     for e in data.get("episodes", [])]
         return self._cached(("season", show_id, season), fetch)
 
+    def _tv(self, show_id: int) -> dict:
+        return self._cached(("tv", show_id), lambda: self._get(f"/tv/{show_id}"))
+
+    def show_info(self, show_id: int) -> dict:
+        """{id, name, year} for a show id (the same request show_details makes)."""
+        data = self._tv(show_id)
+        name = data.get("name") or data.get("original_name")
+        if not name:
+            raise TMDbError(f"TMDb has no name for show {show_id}.")
+        return {"id": show_id, "name": name, "year": (data.get("first_air_date") or "")[:4]}
+
     def show_details(self, show_id: int) -> list[int]:
         """Season numbers TMDb has for the show, ascending. 0 = Specials."""
         def fetch():
-            data = self._get(f"/tv/{show_id}")
+            data = self._tv(show_id)
             return sorted({s["season_number"] for s in data.get("seasons", [])
                            if s.get("season_number") is not None and s.get("episode_count", 1) > 0})
         return self._cached(("show", show_id), fetch)

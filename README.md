@@ -147,6 +147,41 @@ Each rename writes `ripnamer_undo_<timestamp>.json` in the rip folder, updated a
 
 If some files can't be restored, the log is trimmed to just those, so you can fix the problem and run Undo on the same log again. A fully undone log is renamed `….undone.json`.
 
+## Headless (command line)
+For scripts and rip servers with no screen: two commands, standard Python only (no Tk needed). Each prints one JSON object and nothing else.
+
+```
+python3 -m ripnamer_app.cli plan /rips/disc1 --disc-name "Doctor Who - Season 1 - Disc 4" --start-episode 12 > plan.json
+python3 -m ripnamer_app.cli apply /rips/disc1 --plan plan.json --dest /media/TV
+```
+
+**plan** `FOLDER` with `--show-id N` (TMDb id, needs `--season S`) or `--disc-name TEXT` (show and season read from the disc label: `Show - Season 2 - Disc 1`, `SHOW SEASON 1 DISC 1`, `Show S1 D2`, `SHOW_S01_DISC_3`, `Series 1 Disc 2`). Optional: `--season S` (overrides the label), `--start-episode E` (default 1), `--min-minutes M` (shorter files are extras, default 5), `--specials` (put dated specials in the order; off by default). The TMDb key comes from `--key-file PATH` or the `RIPNAMER_TMDB_KEY` environment variable.
+
+It works like the app's **Continuous (across seasons)** numbering from S<season>E<start>, with Auto episode length, Tolerance 25%, no maximum, and already-named files left alone. A show from `--disc-name` is only used if exactly one TMDb show has that name (ignoring case, punctuation and a leading "The", retried once without "Marvel Studios", "Marvel's", "Disney" or "DC"). Otherwise it stops and names the candidates.
+
+```
+{"v": 1, "ok": true, "clean": true, "reasons": [],
+ "show": {"id": 57243, "name": "Doctor Who", "year": "2005"}, "season": 1, "start": 12,
+ "rows": [{"file": "title_t00.mkv", "size": 7516192768, "seconds": 2700.0, "include": true, "status": "OK",
+           "season": 1, "episode": 12, "title": "Bad Wolf",
+           "dest": "Doctor Who (2005) [tmdbid-57243]/Season 01/Doctor Who (2005) - S01E12 - Bad Wolf.mkv"},
+          {"file": "title_t01.mkv", "size": 104857600, "seconds": 100.0, "include": false,
+           "status": "skip: extra (short)", "season": null, "episode": null, "title": null, "dest": null}],
+ "last": {"season": 1, "episode": 12}}
+```
+
+- `dest` is relative to the library folder given to `apply`. `last` is the last episode named, so the next disc can start after it.
+- **clean** means it's safe to apply without a person looking: every file got an OK episode or is shorter than `--min-minutes`, and at least one file is named. Anything else (a ⚠ CHECK, a CONFLICT, more files than episodes, an unreadable file, an off-length or play-all skip, an already-named file) makes it not clean, and `reasons` says which file and why.
+- Exit codes: **0** clean, **3** not clean, **2** bad arguments, **1** anything else, e.g. no key, TMDb unreachable, or not sure which show: `{"v": 1, "ok": false, "error": "Not sure which show: …"}`. It never guesses.
+
+**apply** `FOLDER --plan PLAN.json --dest DIR` moves the files of a clean plan into `DIR`, with the same mover as the app (undo log in `FOLDER`, never overwrites, copy-then-swap across drives). It refuses the whole plan, moving nothing, unless it's clean, every file is still there with the same size, and no `dest` already exists or points outside `DIR` (absolute paths, `..` and control characters are refused). `DIR` must already exist.
+
+```
+{"v": 1, "ok": true, "moved": 4, "log": "/rips/disc1/ripnamer_undo_20261103_091500.json", "errors": []}
+```
+
+A refusal or failed move has `"ok": false` (with `"error"` for a refusal) and exits 1. Undo works the same as in the app: **Undo a rename…** with that log.
+
 ## Network
 TMDb lookups retry automatically (up to 4 tries with growing waits) on timeouts, server errors and rate limiting. If it still fails you get a plain message: offline, bad API key, not found, and so on.
 
@@ -163,7 +198,7 @@ TMDb lookups retry automatically (up to 4 tries with growing waits) on timeouts,
 - **Left panel cut off** – it scrolls (mouse wheel) when the window is short.
 
 ## Tests
-From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `py -m …`). Covers MKV/MP4 length reading, planning, continuous timelines with specials, Set episode, TMDb retries, cross-drive copy, cancel, and undo. No internet or real videos needed.
+From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `py -m …`). Covers MKV/MP4 length reading, planning, continuous timelines with specials, Set episode, TMDb retries, cross-drive copy, cancel, undo, and the headless commands. No internet or real videos needed.
 
 ## Known limits
 - Alternate orderings only exist if someone added them on TMDb. If yours is missing, use Standard seasons + First episode, or Continuous for discs that cross seasons.
