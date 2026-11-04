@@ -129,6 +129,22 @@ class MediaTests(TmpDir):
         self.assertEqual([p.name for p in media.list_videos(self.dir)],
                          ["title_t1.mkv", "title_t2.mp4", "title_t10.mkv"])
 
+    def test_disc_order_season_then_disc_then_title(self):
+        names = ["Spectacular Spider-Man - Season 1 - Disc 2 T17.mkv", "s01e.mkv", "s01e07.mkv",
+                 "Spectacular Spider-Man - Season 1 - Disc 1 T22.mkv", "Spectacular Spider-Man - Season 2 - Disc 1 T03.mkv",
+                 "Spectacular Spider-Man - Season 1 - Disc 1 T17.mkv", "Spectacular Spider-Man - Season 1 - Disc 10 T01.mkv",
+                 "Spectacular Spider-Man - Season 1 - Disc 2 T9.mkv", "show_S01_D03_t00.mkv", "title_t00.mkv"]
+        for n in names:
+            (self.dir / n).write_bytes(b"")
+        self.assertEqual([p.name for p in media.list_videos(self.dir)], [
+            "Spectacular Spider-Man - Season 1 - Disc 1 T17.mkv", "Spectacular Spider-Man - Season 1 - Disc 1 T22.mkv",
+            "Spectacular Spider-Man - Season 1 - Disc 2 T9.mkv", "Spectacular Spider-Man - Season 1 - Disc 2 T17.mkv",
+            "show_S01_D03_t00.mkv", "Spectacular Spider-Man - Season 1 - Disc 10 T01.mkv",
+            "Spectacular Spider-Man - Season 2 - Disc 1 T03.mkv",
+            "s01e07.mkv", "s01e.mkv", "title_t00.mkv"])
+        for plain in ("s01e07.mkv", "title_t00.mkv", "Show S01E02.mkv", "Seasons Greetings.mkv", "Discovery S1.mkv"):
+            self.assertEqual(media.disc_order_key(plain)[0], 1, plain)
+
     def test_formatting(self):
         self.assertEqual(media.fmt_dur(4380), "1:13:00")
         self.assertEqual(media.fmt_dur(190), "3:10")

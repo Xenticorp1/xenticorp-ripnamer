@@ -235,9 +235,24 @@ def natural_key(s: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s)]
 
 
+# "Season 1 - Disc 2", "S01 D2", "Series 1 Disc 2", "season-3-disc-1" anywhere in a file name
+_SEASON_DISC = re.compile(r"(?<![a-z0-9])(?:season|series|s)[ ._-]*0*(\d{1,2})[ ._,:-]*(?:disc|disk|d)[ ._-]*0*(\d{1,2})"
+                          r"(?![0-9])", re.I)
+
+
+def disc_order_key(name: str):
+    """Sort key for a rip folder: files whose names say the season and disc ("Show - Season 1 - Disc 2 T17.mkv")
+    go first, by season, then disc, then the rest of the name naturally (T17 < T18 < T110); every other file
+    follows in natural order. So a stray or half-renamed file never takes disc 1's first episode."""
+    m = _SEASON_DISC.search(name)
+    if m:
+        return (0, int(m.group(1)), int(m.group(2)), natural_key(name[m.end():]))
+    return (1, 0, 0, natural_key(name))
+
+
 def list_videos(folder) -> list[Path]:
     return sorted((p for p in Path(folder).iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS),
-                  key=lambda p: natural_key(p.name))
+                  key=lambda p: disc_order_key(p.name))
 
 
 def scan_folder(folder) -> list[dict]:
