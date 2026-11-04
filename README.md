@@ -131,7 +131,7 @@ Example, Metalocalypse S1 disc 1 (Continuous, minimum 5 min): seven 11:34 episod
 - **Red ✖** – more files than episodes in that season/volume, or the target file already exists. Won't be renamed.
 
 Double-click a row (or right-click → Skip / Include) to include or skip it; episodes renumber automatically. Right-click → **Set episode…** pins a file to a specific episode.
-Files are processed in natural filename order (t00, t01 … t10), which is MakeMKV's title order.
+Files are processed in natural filename order (t00, t01 … t10), which is MakeMKV's title order. When file names say the season and disc (`Show - Season 1 - Disc 2 T17.mkv`, `S01 D2`, `season-1-disc-2`), those files come first, by season, then disc, then title number, so several discs ripped into one folder line up in disc order. Any other file (say one you half-renamed) goes after them.
 
 ## Settings (⚙)
 - **TMDb API key** – change it any time; a new key is saved once a search succeeds. "Reset to built-in key" returns to the baked-in one.
