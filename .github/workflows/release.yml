@@ -2,6 +2,9 @@ name: Release
 
 on:
   push:
+    # A push to main releases v<VERSION> (ripnamer_app/__init__.py) when that version has no tag yet: the tag and
+    # the release are made here. A merge that leaves VERSION alone builds nothing. A pushed v* tag still works too.
+    branches: [main]
     tags: ["v*"]
   # Actions tab → Release → "Run workflow": builds both downloads as workflow artifacts
   # (named after the branch) without publishing a release. Use it to test a build first.
@@ -11,7 +14,37 @@ permissions:
   contents: read
 
 jobs:
+  # What this run is called and whether it publishes: a v* tag -> that tag, released; main -> v<VERSION>, released
+  # only if that tag doesn't exist yet (otherwise nothing is built); "Run workflow" -> the branch name, not released.
+  version:
+    runs-on: ubuntu-22.04
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+      build: ${{ steps.v.outputs.build }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          app="v$(python3 -c "import ripnamer_app; print(ripnamer_app.VERSION)")"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$app" >/dev/null; then
+              echo "$app is already released; nothing to build."
+              echo "build=false" >> "$GITHUB_OUTPUT"; echo "release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Releasing $app."
+              echo "build=true" >> "$GITHUB_OUTPUT"; echo "release=true" >> "$GITHUB_OUTPUT"
+            fi
+            echo "name=$app" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +61,7 @@ jobs:
           [ "v$app" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME doesn't match VERSION $app in ripnamer_app/__init__.py"; exit 1; }
 
   windows:
-    needs: test
+    needs: [version, test]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +107,7 @@ jobs:
           --version-file version_info.txt ripnamer.py
       - name: Rename asset
         shell: bash
-        run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${GITHUB_REF_NAME}.exe"
+        run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${{ needs.version.outputs.name }}.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -82,7 +115,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: test
+    needs: [version, test]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +135,7 @@ jobs:
           --name xenticorp-ripnamer --add-data "fonts:fonts"
           --add-data "xenticorp.png:." ripnamer.py
       - name: Rename asset
-        run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${GITHUB_REF_NAME}-linux-x86_64"
+        run: mv dist/xenticorp-ripnamer "dist/xenticorp-ripnamer-${{ needs.version.outputs.name }}-linux-x86_64"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -110,8 +143,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [windows, linux]
-    if: github.ref_type == 'tag'
+    needs: [version, windows, linux]
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -130,8 +163,9 @@ jobs:
       # through the GitHub API. SHA256SUMS.txt keeps a fixed name for /releases/latest/download/.
       - uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.version.outputs.name }}
+          tag_name: ${{ needs.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
           files: |
             assets/Xenticorp-Ripnamer-*.exe
             assets/xenticorp-ripnamer-*-linux-x86_64

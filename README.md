@@ -1,4 +1,4 @@
-# Xenticorp Ripnamer  (v3.2.0)
+# Xenticorp Ripnamer  (v3.2.1)
 
 Renames MakeMKV TV rips (.mkv, plus .mp4/.m4v) to Jellyfin format using TMDb.
 
@@ -208,11 +208,8 @@ From the RipNamer folder: `python -m unittest discover -s tests -v` (Windows: `p
 
 ## Releasing
 1. Set the new version in `ripnamer_app/__init__.py` (`VERSION = "X.Y.Z"`) and commit. That's the only place: the window title, header, exe file name and Properties → Details all read it.
-2. Push a matching tag and GitHub Actions does the rest:
-   ```
-   git tag vX.Y.Z && git push --tags
-   ```
-`.github/workflows/release.yml` checks that the tag matches `VERSION`, runs the tests, builds the Windows exe and Linux binary (no key baked in), and attaches `Xenticorp-Ripnamer-vX.Y.Z.exe`, `xenticorp-ripnamer-vX.Y.Z-linux-x86_64` and `SHA256SUMS.txt` to a GitHub Release named after the tag. Xenticorp.net finds the newest files through the GitHub API, so keep the `Xenticorp-Ripnamer-*.exe` / `xenticorp-ripnamer-*-linux-x86_64` pattern. `SHA256SUMS.txt` keeps its fixed name.
+2. Merge it to `main`. When `main` gets a `VERSION` that has no tag yet, GitHub Actions tags it `vX.Y.Z` and publishes the release. A merge that leaves `VERSION` alone builds nothing, so bump it whenever a merge should ship. (Pushing a `vX.Y.Z` tag by hand still works the same way.)
+`.github/workflows/release.yml` checks that a hand-pushed tag matches `VERSION`, runs the tests, builds the Windows exe and Linux binary (no key baked in), and attaches `Xenticorp-Ripnamer-vX.Y.Z.exe`, `xenticorp-ripnamer-vX.Y.Z-linux-x86_64` and `SHA256SUMS.txt` to a GitHub Release named after the tag. Xenticorp.net finds the newest files through the GitHub API, so keep the `Xenticorp-Ripnamer-*.exe` / `xenticorp-ripnamer-*-linux-x86_64` pattern. `SHA256SUMS.txt` keeps its fixed name.
 
 Never commit `ripnamer_key.py` (it's in `.gitignore`).
 
