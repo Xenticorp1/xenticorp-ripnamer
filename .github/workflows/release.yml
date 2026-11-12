@@ -105,6 +105,34 @@ jobs:
           --name "Xenticorp Ripnamer" --add-data "fonts;fonts"
           --icon xenticorp.ico --add-data "xenticorp.ico;."
           --version-file version_info.txt ripnamer.py
+      # Azure Artifact Signing (.github/sign-setup.sh): signs the exe when the AZURE_* repository
+      # secrets are set; without them it stays unsigned and the run shows a warning.
+      - name: Code signing setup
+        id: sign
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || secrets.AZURE_TENNANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: bash .github/sign-setup.sh
+      - name: Sign the exe
+        if: steps.sign.outputs.signed == 'true'
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || secrets.AZURE_TENNANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: artifact-signing-cli -e "$AZURE_SIGNING_ENDPOINT" "dist/Xenticorp Ripnamer.exe"
+      - name: Check the signature
+        if: steps.sign.outputs.signed == 'true'
+        shell: pwsh
+        run: ./.github/verify-signature.ps1 "dist/Xenticorp Ripnamer.exe"
       - name: Rename asset
         shell: bash
         run: mv "dist/Xenticorp Ripnamer.exe" "dist/Xenticorp-Ripnamer-${{ needs.version.outputs.name }}.exe"
